@@ -12,16 +12,10 @@ Delivery) live in their own sub-folder under `functions/`.
 
 | Function | File | Status |
 |----------|------|--------|
-| Driver rating | [functions/driver-rating.md](functions/driver-rating.md) | Draft |
+| Driver rating — OTD | [functions/driver-rating/otd.md](functions/driver-rating/otd.md) | Draft |
 
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
-
-## Function groups
-
-| Group | Folder | Description |
-|-------|--------|-------------|
-| OTD (On-Time Delivery) | [functions/OTD/](functions/OTD/) | On-Time Delivery metrics & related functions |
 
 ---
 
