@@ -5,8 +5,8 @@
 > **Last updated:** June 2026
 
 Web app for the **Dispatch** domain. Per-function documentation lives in the
-[`functions/`](functions/) directory. Metric/area-specific documentation that groups
-several related functions lives in its own top-level folder (e.g. [`OTD/`](OTD/)).
+[`functions/`](functions/) directory. Functions that form a group (e.g. On-Time
+Delivery) live in their own sub-folder under `functions/`.
 
 ## Function index
 
@@ -17,11 +17,11 @@ several related functions lives in its own top-level folder (e.g. [`OTD/`](OTD/)
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
 
-## Areas
+## Function groups
 
-| Area | Folder | Description |
-|------|--------|-------------|
-| OTD (On-Time Delivery) | [OTD/](OTD/) | On-Time Delivery metrics & related functions |
+| Group | Folder | Description |
+|-------|--------|-------------|
+| OTD (On-Time Delivery) | [functions/OTD/](functions/OTD/) | On-Time Delivery metrics & related functions |
 
 ---
 
