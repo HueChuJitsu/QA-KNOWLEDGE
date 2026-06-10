@@ -12,7 +12,8 @@ own sub-folder under `functions/`.
 
 | Function | File | Status |
 |----------|------|--------|
-| Client OTD (OTD by SLA) | [functions/client-otd/client-otd.md](functions/client-otd/client-otd.md) | Production |
+| Client OTD (OTD by SLA) | [functions/client-otd/otd-by-sla.md](functions/client-otd/otd-by-sla.md) | Production |
+| Client OTD — Old Logic (inbound_received_ts) | [functions/client-otd/old-otd-inbound-received-ts.md](functions/client-otd/old-otd-inbound-received-ts.md) | Deprecated |
 
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
