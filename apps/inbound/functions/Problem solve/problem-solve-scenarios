@@ -1,0 +1,250 @@
+# No-Route Sort Workflow — 7 Stories
+
+Summary of each story as a flowchart for reviewing business logic.
+
+---
+
+## Story 1 — No-Route Discovery & Collection
+
+**Description:** Shipment enters sort, no route found → system creates tasks, worker collects into container.
+
+**Actors:** Carlos (Induction Worker) · Ana (Sort Worker) · Conductor (System)
+
+### Flow
+
+```
+Carlos: Scan shipment at induction
+  → Routing System: No route found
+  → Conductor: Print NO-ROUTE label [Workflow begins]
+  → Create 2 Tasks: Collection Task + Routing Task
+  → Carlos: Apply label, push onto belt [No change to rhythm]
+  → Ana (Sort Floor): Scan shipment from belt
+  → App: "No route. Collect to container"
+  → Ana: Go to no-route cart, scan cart barcode
+  → Ana: Place shipment into cart
+  → Conductor: Validate container [Confirm placement]
+  → ✅ Collection Task COMPLETE [Routing Task still OPEN]
+```
+
+### Tasks
+
+| Task | Description | Proof |
+|---|---|---|
+| 📦 Collection Task | Worker must collect shipment into no-route container | Scan shipment + scan container |
+| 🗺️ Routing Task | Shipment needs to be assigned a route — handled by routing team outside Conductor | Routing event from external system |
+
+> 💡 **Key insight:** Carlos and Ana do exactly what they always do — scan, label, place. The system records physical proof through scans. No added cognitive load.
+
+---
+
+## Story 2 — Routing Observed & Re-Sort
+
+**Description:** Routing team assigns routes to no-route shipments → Conductor observes → creates re-sort tasks → workers re-sort.
+
+**Actors:** Ray (Supervisor) · Tech Support (External) · Marco (Runner) · Carlos / Ana · Conductor
+
+### Flow
+
+```
+Ray: Sees 47 open routing tasks → Contacts Tech Support
+  → Tech Support: Routes 42/47 shipments [In external routing system]
+  → Conductor observes: Receives routing events for 42 shipments
+  → Per shipment: Routing Task → DONE | Re-sort Task → CREATED
+  → Ray: Directs Marco to bring pallet to induction
+  → Marco: Uses pallet jack, moves pallet to induction
+  → Marco: Scan pallet QR → "Move to induction"
+  → Conductor: Pallet marked as consumed by sort session
+```
+
+**Carlos scans each shipment off pallet:**
+
+| ✅ Route assigned | ❌ Still no route |
+|---|---|
+| Print route label | Print no-route label |
+| Push onto belt | Push onto belt (as normal) |
+| Ana: Scan → Sort to correct position | Ana: Re-collect into new container |
+| ✅ Re-sort Task DONE — Workflow COMPLETE | Routing Task still OPEN — Awaiting routing |
+
+> 💡 **Key insight:** Conductor *observes* routing events from external system — it does not route itself. Each routing event automatically completes the Routing Task and creates a new Re-sort Task.
+
+---
+
+## Story 3 — Deferred to Storage
+
+**Description:** Sort is nearly done, 5 shipments still unrouted → Ray defers → storage tasks created → Marco moves them to problem-solve area.
+
+**Actors:** Ray (Supervisor) · Marco (Runner) · Conductor
+
+### Flow
+
+```
+Ray: Sort almost done, 5 shipments still unrouted → Decides to defer
+  → Ray: Initiate deferral for 5 shipments
+  → Conductor: Cancel Routing Tasks
+  → Create Storage Task x5 shipments
+
+⚠️ Obligation does not disappear — routing task is cancelled but storage task is created immediately.
+   Shipment must be moved to a designated location.
+
+  → Ray: Directs Marco to move 5 shipments to problem-solve area
+  → Marco: Go to no-route cart, scan each shipment
+  → Marco: Scan problem-solve container
+  → Conductor: Validate placement [Purpose-specific container confirmed]
+  → ✅ Storage Task DONE [Terminal state — Deferred]
+```
+
+### Tasks
+
+| Task | Description | Proof |
+|---|---|---|
+| 🏪 Storage Task | Move shipment to problem-solve area — dedicated container, separate from normal inventory | Scan shipment + scan problem-solve container |
+
+> 💡 **Key insight:** Deferral is not "abandonment" — it replaces the Routing Task with a Storage Task. The shipment still needs to be placed in the right spot, with proof. The next shift knows exactly where it is.
+
+---
+
+## Story 4 — Return-to-Sender Exit
+
+**Description:** Shipment cannot be routed, Ray decides to return it to sender (RTS) → workflow closes completely.
+
+**Actors:** Ray (Supervisor) · Conductor
+
+### Flow
+
+```
+SHP-44952: Through 2 sort sessions, still unrouted
+  → Ray: Decision — Return to Sender
+  → Ray: Initiate RTS resolution for SHP-44952
+  → Conductor: Cancel Routing Task
+  → 📤 Workflow CLOSED — RTS terminal state
+     Chain of custody: scanned → collected → RTS decision
+  → [Future] RTS Workflow (not yet built — manual process currently)
+```
+
+### Comparison of 3 terminal states
+
+| Terminal State | Trigger | Outcome |
+|---|---|---|
+| ✅ Re-sorted | Routing done, sorted to correct position | Workflow complete. Shipment loaded onto vehicle. |
+| 🏪 Storage | Ray defers — routing task cancelled | Shipment into problem-solve area. Next shift continues. |
+| 📤 RTS | Ray decides to return to client | Workflow closed. Handoff to RTS process. |
+
+> 💡 **Key insight:** RTS is the *exit signal* of the no-route workflow. Conductor has fulfilled its obligation: scan → collect → decision. The physical return process will be a separate Conductor workflow in the future.
+
+---
+
+## Story 5 — Route Reversal
+
+**Description:** Shipment already re-sorted → routing team removes route → workflow "re-opens" → new tasks created to retrieve shipment.
+
+**Actors:** Tech Support (External) · Ray (Supervisor) · Marco (Runner) · Conductor
+
+### Flow
+
+```
+SHP-45033: Re-sort complete — workflow DONE
+  → Tech Support: Restructure route → SHP-45033 removed from route
+  → Conductor observes: Route removal event
+  → Conductor: Workflow "re-opens" [Shipment is at wrong position]
+  → Create: 🗺️ New Routing Task (needs new route)
+           + 📦 New Collection Task (must retrieve from position B-8)
+
+⚠️ SHP-45033 is still at position B-8 — if not collected, it may be loaded onto the wrong vehicle.
+   This is why the Collection Task is mandatory.
+
+  → Ray: Dashboard alert — route-reversed shipment → Directs Marco to B-8
+  → Marco: Go to B-8, scan SHP-45033
+  → Marco: Scan no-route container
+  → Conductor: Collection Task DONE [Routing Task still OPEN]
+  → SHP-45033 re-enters normal no-route cycle [Awaiting routing → re-sort / defer / RTS]
+```
+
+> 💡 **Key insight:** A "done" workflow can be reopened by an external event. Conductor observes continuously — not only at workflow creation. Route reversal is the only event type that re-opens a completed workflow.
+
+---
+
+## Story 6 — Ray's Dashboard: Directing the Operation
+
+**Description:** Ray sees the full session picture, coordinates the team based on dashboard — every shipment has a clear state, nothing gets lost.
+
+**Actors:** Ray (Supervisor) · Conductor Dashboard
+
+### Dashboard at 7:30 PM (90 min into session)
+
+| State | Count | Meaning |
+|---|---|---|
+| Collected | 46 / 47 | In no-route container, confirmed by scan |
+| Awaiting Routing | 12 | No route yet, waiting on tech support |
+| Routed — Pending Re-sort | 6 | Route assigned, pallet not yet at induction |
+| Re-sorted ✅ | 28 | Workflow complete |
+| Route Reversed | 1 | SHP-45033 — collected back, awaiting new route |
+
+### Decisions Ray makes based on dashboard
+
+```
+Ray @ 7:30 PM: 6 routed — pending re-sort → Marco brings pallet to induction
+  (independently)
+Ray @ 7:30 PM: 12 unrouted, 90 min remaining → Tech Support prioritises routing 12 shipments
+  ↓ @ 8:45 PM
+Ray: 5 still unrouted → Defer → Storage Task
+  (simultaneously)
+Ray: 1 recurring problem → Initiate RTS
+```
+
+### 9:00 PM — Session end state
+
+| Outcome | Count |
+|---|---|
+| Re-sorted ✅ | 40 |
+| Deferred to storage 🏪 | 5 |
+| RTS 📤 | 1 |
+| Late-routed & re-sorted ✅ | 1 |
+
+**→ 0 shipments forgotten. Every obligation proven.**
+
+---
+
+## Story 7 — Misplaced Shipment After Pallet Move
+
+**Description:** Marco moves pallet, one shipment falls to the floor. System detects a gap in expected scans and alerts Ray.
+
+**Actors:** Marco (Runner) · Carlos (Induction) · Ray (Supervisor) · Conductor
+
+### Flow
+
+```
+Marco: Move PLT-2200 to induction [18 shipments on pallet]
+  → Conductor: PLT-2200 "consumed by sort session" [Expects 18 scans]
+  → Carlos: Scans 17/18 shipments off pallet [SHP-45107 — no scan recorded]
+  → Conductor: ⚠️ Flag SHP-45107 as "potentially misplaced"
+  → Ray: Dashboard alert — 1 shipment missing from PLT-2200
+  → Ray: Check movement history [inducted 5:22 → collected 5:23 → onto pallet 5:40]
+  → Ray: Directs Marco to retrace PLT-2200's path
+  → Marco: Finds SHP-45107 on the floor, 10 feet from induction
+  → Carlos: Scan shipment → label → belt
+  → ✅ Misplaced flag cleared [SHP-45107 re-enters sort flow normally]
+```
+
+### Chain of Custody — SHP-45107
+
+| Time | Event |
+|---|---|
+| 5:22 PM | Inducted (Carlos) |
+| 5:23 PM | Collected (Ana) |
+| 5:40 PM | Onto PLT-2200 |
+| 6:45 PM | ⚠️ Fell off pallet |
+| 7:05 PM | ✅ Found → re-scanned |
+
+> 💡 **Key insight:** Conductor knows PLT-2200 has 18 shipments. When the pallet is "consumed", the system *expects* 18 scans. Gap = alert. The system never loses track of an obligation — even when the package is on the floor.
+
+---
+
+## Legend
+
+| Color | Role |
+|---|---|
+| 🟢 Green | System / Conductor action |
+| 🔵 Blue | Floor worker (Carlos / Ana) |
+| 🟣 Purple | Supervisor (Ray) |
+| 🟠 Orange | Runner (Marco) |
+| 🟡 Yellow | External system / Tech Support |
