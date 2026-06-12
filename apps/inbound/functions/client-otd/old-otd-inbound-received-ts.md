@@ -47,8 +47,10 @@ Pushes any timestamp through the sort window to produce a sort date:
 
 ```
 scannedDateZ = scannedTime.startOfDay - 1 day
-start = sprinkling_config.attributes.sort_start  (default: PT14H)
-end   = sprinkling_config.attributes.sort_end    (default: PT29H)
+# Looked up by clientId in sprinkling_config.clients; if the client is not
+# configured there, fall back to the defaults below.
+start = sprinkling_config.clients[clientId].sort_start  (default: PT14H)
+end   = sprinkling_config.clients[clientId].sort_end    (default: PT29H)
 
 days = 0
 while (end + days days) < scannedTime:
@@ -59,11 +61,13 @@ sort_date = scannedDateZ + days
 
 ### Config source
 
+The sort window is looked up **per client** in `sprinkling_config.clients`. If the shipment's `clientId` is **not configured** in `sprinkling_config.clients`, OTD is **always** computed with the default window `PT14H – PT29H` (14:00 → 05:00 next day).
+
 | Condition | sort_start | sort_end |
 |---|---|---|
-| No `sprinkling_config` for the region | PT14H (14:00) | PT29H (05:00 next day) |
-| Config exists but key missing | Fallback PT14H | Fallback PT29H |
-| Full config present | `attributes.sort_start` | `attributes.sort_end` |
+| `clientId` not set in `sprinkling_config.clients` | **PT14H (14:00)** — default | **PT29H (05:00 next day)** — default |
+| Client configured but key missing | Fallback PT14H | Fallback PT29H |
+| Client fully configured | `attributes.sort_start` | `attributes.sort_end` |
 
 ### Examples
 
@@ -187,7 +191,7 @@ If no `ClientService` is found → use `originalDropoffEarliestTs` / `originalDr
 
 | Item | Location |
 |---|---|
-| Sort window config | `sprinkling_config.attributes.sort_start` / `sort_end` (MongoDB) |
+| Sort window config | `sprinkling_config.clients[clientId].sort_start` / `sort_end` (MongoDB); defaults PT14H / PT29H if client not configured |
 | Max OTD reset days | `client_settings.delivery_settings.max_otd_reset_days` (MongoDB) |
 | Blame check | `billing_disposition` table (PostgreSQL) |
 | ClientService (dropoff times) | `client_service` table (PostgreSQL) |
