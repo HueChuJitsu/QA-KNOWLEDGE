@@ -55,9 +55,9 @@ Read this **before** creating any account on Production or Beta.
 - Driver App installed (Staging build from Firebase / TestFlight).
 - A phone number for verification:
   - **Staging:** any random number works (verification code is hardcoded).
-  - **Beta/Prod:** a real or fake-number service (e.g. `receive-smss.com`) to receive the SMS code. *Fake numbers are limited — delete the test driver after testing so the number can be reused.*
+  - **Beta/Prod:** any random number works — the SMS verification code is retrieved from the Mongo **`communication_logs`** collection (no real phone needed).
 - An email address not already registered on the system.
-- Postman + QA Master collection (for the Staging FCRA-approval shortcut).
+- Postman + QA Master collection (for the FCRA-approval shortcut). **To use the company Postman (team workspace / collection), contact the QA Lead to have your account added.**
 - DB access (MongoDB) for config/verification (see §8).
 
 ## 3. Sign Up in the Driver App
@@ -67,10 +67,10 @@ Read this **before** creating any account on Production or Beta.
 1. Tap **Sign Up to Driver**.
 2. Input the phone number → tap **Create** → moves to the **Verify Mobile Number** screen.
    - Staging: input a random number.
-   - Beta/Prod: use a fake-number website to receive the code.
+   - Beta/Prod: input a random number.
 3. Input the verification code → tap **Create** → moves to the **Registration Questions** screen.
    - **Staging:** hardcode `6868`.
-   - Beta/Prod: the code sent to the fake number.
+   - **Beta/Prod:** read the code from the Mongo `communication_logs` collection.
    - Config (enable/disable questions): Consul key `beta/apps/driverappapi/mobile_app_config/public@disable_question`.
 
 ### 3.2 Registration questions & delivery quiz
@@ -156,7 +156,11 @@ Read this **before** creating any account on Production or Beta.
 
 ## 4. Background Check Approval (FCRA) — QA shortcut
 
-> **💡 QA test drivers — all environments.** A real background check cannot be submitted for a QA test driver, so on **Staging, Beta, and Production** the driver is approved via the Simulate FCRA approval API below. (Genuine production drivers still go through the real background-check process — this shortcut is for QA-created test accounts only.)
+> **💡 QA test drivers.**
+> - **Staging:** you **can submit** the Background Check from the app, then approve it via the Simulate FCRA approval API below.
+> - **Beta/Prod:** a real Background Check **cannot be submitted** for a test driver, so use the same Simulate FCRA approval shortcut to approve.
+>
+> Genuine production drivers still go through the real background-check process — this shortcut is for QA-created test accounts only.
 
 After submitting the Background Check, approve the driver via API:
 
@@ -177,7 +181,7 @@ Instead of the in-app flow, an IC driver can be created from the Admin App:
 
 ## 7. Notes & Gotchas
 
-- **Reuse fake numbers (Beta/Prod):** delete the test driver after testing so the limited fake phone number can be reused.
+- **Beta/Prod SMS code:** the verification code is not sent to a real phone — read it from the Mongo `communication_logs` collection.
 - **Not hiring in area:** use an invite code to bypass the quiz gate (ENG-5510).
 - **Frozen region:** if `driver_coverage_area.Hiring = false`, the driver is stuck at the BC submit step — set `Hiring = true` to unfreeze.
 - **DOB:** under-21 is blocked by the picker.
@@ -196,6 +200,7 @@ Instead of the in-app flow, an IC driver can be created from the Admin App:
 | `db.getCollection("driver_coverage_area").find({})` | Hiring / Frozen control per region |
 | `cars` table | Year / Make / Model validation for Vehicle Information |
 | `driver_registration_record` | BC / Turn status data |
+| `communication_logs` | SMS verification code on **Beta/Prod** (look up the code sent during phone verification) |
 
 ## 9. Related References
 
