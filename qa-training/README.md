@@ -20,6 +20,17 @@ QA training documentation and lessons, set in the context of the **Jitsu** last-
 | [jitsu-qa-webapp-release-process-cheatsheet.md](docs/jitsu-qa-webapp-release-process-cheatsheet.md) | Quick reference for the isolated-release-branch SDLC. |
 | [jitsu-qa-webapp-release-process-full-guide.md](docs/jitsu-qa-webapp-release-process-full-guide.md) | Full QA workflow per environment + edge cases. |
 | [jitsu-qa-probation-goals.md](docs/jitsu-qa-probation-goals.md) | 2-month probation goals for Junior & Senior QA. |
+| [jitsu-qi-system.md](docs/jitsu-qi-system.md) | QI System operational reference — Deshi pipeline, `tc.md` inventory, 7 Jira states (Linehaul pilot). |
+
+## Career framework
+
+The Mar 2026 transition to two quality disciplines (QI / QS). See [Quality Ownership](docs/career-framework/quality-ownership.md) for context.
+
+| Document | What it covers |
+|---|---|
+| [career-framework/quality-ownership.md](docs/career-framework/quality-ownership.md) | The new quality model and the dev/QA collaboration shift (org-wide philosophy). |
+| [career-framework/qi-engineering.md](docs/career-framework/qi-engineering.md) | Quality Improvement (QI) Engineering career ladder — evolution of Manual QA. |
+| [career-framework/qs-engineering.md](docs/career-framework/qs-engineering.md) | Quality Systems (QS) Engineering career ladder — evolution of Automation QA. |
 
 ## Where to start
 

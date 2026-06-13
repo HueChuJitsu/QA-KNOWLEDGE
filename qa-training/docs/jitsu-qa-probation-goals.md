@@ -1,6 +1,6 @@
 # Jitsu QA — Probation Goals
 
-> **Version 1.1** • May 26, 2026
+> **Version 1.2** • June 13, 2026
 > Your goals for the 2-month probation at Jitsu — Junior QA & Senior QA
 
 ---
@@ -9,6 +9,7 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **v1.2** | 2026-06-13 | Added Section 9 — "Future of QA at Jitsu" — explaining career direction (Mar 2026 transition to QI/QS disciplines, 9-18 months). New members aware that Manual QA path → QI Engineering. References to Career Framework doc. No threshold or category changes. |
 | **v1.1** | 2026-05-26 | Added Feature Documentation skills to both levels (Category 3): Junior — Feature Documentation Hygiene + Feature Flag Documentation. Senior — Feature Documentation Ownership + Feature Flag Documentation Standards. Added a "Documentation discipline" section to Tips (Section 8) with concrete examples (`claimsProcessingEnabled`, `SLA_VERSIONING_ENABLED`, `enable_require_id_scan`). |
 | v1.0 | 2026-05-26 | Initial pilot release. Junior QA (5 goal areas, 33 skills) + Senior QA (7 goal areas, 41 skills). 2 outcomes (PASS / NOT PASS). Includes: Deep domain knowledge (Shipment + Assignment Lifecycle full flow, Cross-team Knowledge), AI fluency (4 skills per level — usage, prompt engineering, verification, workflow design), Business + Product mindset, Risk-based thinking (Senior), Daily progress reporting (non-negotiable Day 1). |
 
@@ -395,6 +396,7 @@ Practical advice from QA Leads who've onboarded many QAs at Jitsu.
 - Don't be afraid to ask 'dumb' questions — better to ask than guess.
 - Post daily progress reports in the QA channel from Day 1 — it's a habit, not a punishment. Lead needs visibility.
 - If you hit ANY blocker, ping Lead immediately — don't wait for daily standup.
+- **Understand where Jitsu is heading**: Skim Section 9 in your first week. You don't need to study the career framework deeply — just know the direction. The skills you're building now feed directly into QI Engineering.
 
 ### 🎯 In Week 3–6
 
@@ -435,6 +437,107 @@ Practical advice from QA Leads who've onboarded many QAs at Jitsu.
 > - Leverage AI as your assistant — not as authority
 >
 > QAs with great attitude almost always pass — even if their technical skills started slow.
+
+---
+
+## Section 9: Future of QA at Jitsu — Your Career Direction
+
+> **TL;DR**: Jitsu is transitioning the QA function from one team into **two distinct disciplines** with separate career ladders. As a new Manual QA hire, your future is **QI (Quality Improvement) Engineering**. Your daily probation work in v1.1 is still relevant — it builds the foundation for QI. This section orients you to the direction so you can see where your career is heading.
+
+### 9.1 Why this section exists
+
+You may hear teammates or leadership mention "**QI Engineering**" or "**QS Engineering**", "**Deshi commands**", or the "**new QI System**". These are part of an organizational change announced in **March 2026** and rolling out over **9–18 months**. The probation goals you're working toward (Sections 2–8) are still 100% relevant — but it helps to know where the company is heading.
+
+### 9.2 The transition in one sentence
+
+> Jitsu is moving from a model where **QA is a phase** (devs build → QA tests) to a model where **quality is a property of the system** (continuously proven by automation, with QA enabling — not gatekeeping — quality).
+
+### 9.3 Two new disciplines (effective Mar 2026)
+
+| Discipline | Comes from | Focus |
+|-----------|-----------|-------|
+| **🔍 QI (Quality Improvement) Engineering** | **Manual QA team** (your path) | Exploratory testing, risk discovery, test design, acceptance criteria definition. Encoding domain knowledge through PRs with failing tests. |
+| **🛠️ QS (Quality Systems) Engineering** | Automation QA team | Test frameworks, AI-assisted test generation, CI reliability, cross-system integration tests. Enabling devs to test effortlessly. |
+
+**You (new Manual QA hire) are on the QI Engineering path.**
+
+The 6-level QI career ladder is:
+
+```
+Entry  →  Developing  →  Senior  →  Staff  →  Sr Staff  →  Principal
+  ↑          ↑
+ You'll       After ~probation
+  start
+  here
+```
+
+### 9.4 What this means during your probation
+
+**Right now (your daily work)**: Same as v1.1 of this document. Your team (Mobile or Webapp) is still using the **old QA model** — QMetry, manual verification, current Bug Reporting flow, etc. Probation goals in Sections 2–8 are your active rubric.
+
+**On the horizon (months 6–18)**: The QI System (Deshi commands, `tc.md` test inventory, 7 Jira states) is currently piloted on the **Driver-Linehaul app only**. As rollout proceeds, your team will eventually adopt these practices. By the time you complete probation, you'll know the foundations — the new model builds on (not replaces) the QA skills you're learning.
+
+### 9.5 7 Growth Dimensions of QI Engineering (preview)
+
+When the new model fully rolls out, QI Engineers will be evaluated on these 7 dimensions. Many overlap with your current probation skills — they're **deepening**, not replacing, the foundation:
+
+| # | QI Growth Dimension | Maps to v1.1 probation skills |
+|---|---------------------|-------------------------------|
+| 1 | **Exploratory Testing** | Quality of Work, Test Case Writing |
+| 2 | **Risk Discovery** | Senior Cat 5 (Risk-based Test Approach), Quality of Work |
+| 3 | **Test Design & Acceptance Criteria** | Test Case Writing, Feature Documentation Hygiene |
+| 4 | **Developer Collaboration** | Soft Skills (cross-team), Proactive Issue Escalation |
+| 5 | **Quality Advocacy** | Senior Cat 7 (Quality Advocacy), Risk Communication |
+| 6 | **Risk Communication** | Soft Skills, Daily Progress Reports |
+| 7 | **Jitsu Domain Knowledge** ⭐ | **First-class growth dimension** — your Cat 1 Domain Knowledge work is direct foundation |
+
+> ⭐ **Domain Knowledge is a FIRST-CLASS dimension** in QI Engineering. The depth you're building now (Shipment Lifecycle, Assignment Lifecycle, Driver Types, cross-team interactions) is exactly what will set you apart as a QI Engineer.
+
+### 9.6 The mindset shift to internalize early
+
+Old model expected QA to be the **last line of defense** — catching bugs before release.
+
+QI model expects you to **encode your knowledge into the codebase** — through clear acceptance criteria, test scenarios, and (eventually) PRs with failing tests that demonstrate quality gaps.
+
+The shift in one sentence:
+
+> **From observer to solver.**
+
+Instead of "I found this bug, please fix it" → "I found this bug, here's a failing test that proves it, here's the analysis, here's the recommended fix."
+
+You don't need to do this yet during probation. But knowing this is the direction helps you build the right habits early.
+
+### 9.7 Reading list — go deeper
+
+When you're ready (week 3–4 of probation, or after passing probation):
+
+| Doc | Why |
+|-----|-----|
+| **[Quality Ownership and Collaboration](./career-framework/quality-ownership.md)** | The "why" — org-wide philosophy and transition context |
+| **[QI Engineering — Career Ladder](./career-framework/qi-engineering.md)** | Your career ladder — 6 levels, 7 growth dimensions, stretch projects |
+| **[QS Engineering — Career Ladder](./career-framework/qs-engineering.md)** | For context — what your Automation QA counterparts are evolving into |
+| **[Jitsu QI System — Operational Reference](./jitsu-qi-system.md)** | What the new daily workflow looks like (currently Linehaul pilot only) |
+
+### 9.8 Q&A
+
+**Q: Does this mean my probation goals are about to change?**
+A: No. Probation goals v1.2 are the same as v1.1 — no thresholds, categories, or skills changed. Section 9 is awareness only.
+
+**Q: Will I have to use Deshi commands during probation?**
+A: Only if you're assigned to the Linehaul team. Mobile (Driver/Outbound/Warehouse) and Webapp teams continue with the old model during your probation period. If you join Linehaul, your QA Lead will provide specific QI System onboarding.
+
+**Q: What happens to my probation rubric when QI rolls out to my team?**
+A: A new Probation Goals v2.0 aligned with QI Engineering growth dimensions will be issued for hires *after* the rollout. Your probation completes against v1.2 — what you signed up for at hire.
+
+**Q: Is QS Engineering an option for me?**
+A: Long-term yes — there's a documented lateral path from QI to QS (or to Software Development) for engineers who develop strong autonomous fixing + automation skills. But your immediate trajectory as Manual QA → QI Engineering.
+
+**Q: Where do I ask questions about all this?**
+A: Your QA Lead Hue Chu — directly on Slack DM. The career framework is new for everyone; questions are welcome.
+
+---
+
+> 💡 **Bottom line**: Section 9 is a **map of the road ahead** — not new homework. Keep executing against Sections 2–8. The skills you're building now compound directly into QI Engineering when the time comes.
 
 ---
 
