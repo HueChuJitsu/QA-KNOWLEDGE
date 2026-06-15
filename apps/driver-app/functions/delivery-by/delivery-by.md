@@ -3,6 +3,7 @@
 > **App:** Driver App · **Status:** Draft
 > **Epic:** MOB-2514 — 2026Q2 Delivery By App Updates
 > **Shared context:** see [../../README.md](../../README.md)
+> **Config:** see [driver-otd-by-delivery-by.md](./driver-otd-by-delivery-by.md) — `enabled_regions_otd_calculated_by_delivery_by` Consul flag
 > **Last updated:** 2026-06-08
 
 ## 1. Description
