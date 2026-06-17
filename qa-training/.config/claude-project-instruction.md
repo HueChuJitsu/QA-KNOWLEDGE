@@ -86,7 +86,7 @@ Current state:
    - QI System concepts: Deshi commands, tc.md inventory, Three Amigos, 7 Jira states (when relevant)
    - Systems (Dashboard, Dispatch, Routing, Client Web, Recipient Web, DSP Portal, Admin, etc.)
    - Driver types (IC, DSP, 3P, Linehaul) and their booking methods
-   - Client service types (NEXT_DAYS, ON_DEMAND, SPECIALTY, FCTD)
+   - Client service types: `service_type` (COMMINGLE, ONDEMAND, SPECIALTY, FCTD) → `logistic_type` on assignments (NEXT_DAYS=0, ON_DEMAND=1, SPECIALTY=2, FCTD=3)
    - Client hierarchy (Parent / Brand / Brand with client_id)
    - Shipment Lifecycle + Assignment Lifecycle
    - Warehouses, Regions, Zones

@@ -211,7 +211,7 @@ Post in the QA channel using the standard format: 'Day 2 done — Warehouses, Re
 ### 🌅 Morning — The 4 Client Types
 
 - ☐ Read Training Document: Section 4 (Client Service Types)
-- ☐ Memorize enum codes: **NEXT_DAYS(0), ON_DEMAND(1), SPECIALTY(2), FCTD(3)**
+- ☐ Memorize the two layers: `service_type` (client) = **COMMINGLE, ONDEMAND, SPECIALTY, FCTD** → after routing → `logistic_type` on `assignments` = **NEXT_DAYS(0), ON_DEMAND(1), SPECIALTY(2), FCTD(3)** (COMMINGLE → NEXT_DAYS)
 - ☐ Understand each delivery flow — draw the flow diagrams on paper
 - ☐ Distinguish: when does flow go through Inbound Sort vs direct from Client WH?
 
@@ -503,7 +503,7 @@ Use this for a quick self-assessment. By end of Day 14, you should confidently t
 - ☐ Can explain Jitsu's business model in 2 minutes
 - ☐ Know all 4 warehouse types and their roles
 - ☐ Know the Region → Zone hierarchy and the '1 Region = 1 Client Type' rule
-- ☐ Know all 4 client service types (enum codes + flows)
+- ☐ Know all 4 client service types: `service_type` (COMMINGLE / ONDEMAND / SPECIALTY / FCTD) → `logistic_type` enum on `assignments` (0–3) + flows
 - ☐ Know all 4 driver types + the Permission Matrix
 - ☐ Can define: Shipment, Route, Assignment, POD, OTD, SLA, Stem miles, Sprinkling, Geofencing
 
