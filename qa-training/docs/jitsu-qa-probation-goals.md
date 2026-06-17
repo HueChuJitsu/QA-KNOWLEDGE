@@ -88,7 +88,7 @@ The Junior QA must build deep understanding of Jitsu's business and entities dur
 | Skill | Expectation |
 |-------|-------------|
 | **Jitsu Business Model** | Understands what Jitsu does (last-mile delivery) + 3 parties (Client / Driver / Recipient) and how they interact. |
-| **Client Service Types** | Understands 4 client service types with enum codes (`NEXT_DAYS=0` / `ON_DEMAND=1` / `SPECIALTY=2` / `FCTD=3`) and their delivery flows. Knows the difference between commingle and direct flows. |
+| **Client Service Types** | Understands the 4 client service types in the `service_type` table (`COMMINGLE` / `ONDEMAND` / `SPECIALTY` / `FCTD`) and their delivery flows. Knows they map to the `logistic_type` enum on `assignments` after routing (`NEXT_DAYS=0` / `ON_DEMAND=1` / `SPECIALTY=2` / `FCTD=3`, where `COMMINGLE → NEXT_DAYS`). Knows the difference between commingle and direct flows. |
 | **Driver Types (Deep)** | Knows IC / DSP / 3P / Linehaul + their booking permission matrix (only IC can self-book; DSP/3P assigned directly). Understands edge cases: Linehaul auto-assignment, sprinkling. Doesn't confuse 'courier' (= DSP + 3P) with IC. |
 | **Warehouses & Regions** | Knows 4 warehouse types + when each is used. Understands the region/zone hierarchy + the rule: 1 Region = 1 Client Type. |
 | **Shipment Lifecycle (Full Flow)** | Understands full status flow: `DRAFT/CREATED → GEOCODED → ASSIGNED → PICKUP_* → DROPOFF_* / RETURN_* / CANCELLED_*`. Knows what each failure status means (`PICKUP_FAILED`, `DROPOFF_FAILED`, `RESCHEDULED`, `RETURN_TO_CLIENT`). |
@@ -179,7 +179,7 @@ Senior is expected to have deep domain knowledge AND guide juniors through it.
 | Skill | Expectation |
 |-------|-------------|
 | **Jitsu Business Model** | Can explain to a non-engineer in 2 minutes. Knows current business priorities. Can mentor juniors on domain basics. |
-| **Client Service Types** | Deep understanding of 4 types (`NEXT_DAYS=0` / `ON_DEMAND=1` / `SPECIALTY=2` / `FCTD=3`) + flows + Brand hierarchy (Parent / Brand / Brand-with-client_id). |
+| **Client Service Types** | Deep understanding of the `service_type` values (`COMMINGLE` / `ONDEMAND` / `SPECIALTY` / `FCTD`) and their mapping to the `logistic_type` enum on `assignments` after routing (`NEXT_DAYS=0` / `ON_DEMAND=1` / `SPECIALTY=2` / `FCTD=3`) + flows + Brand hierarchy (Parent / Brand / Brand-with-client_id). |
 | **Driver Types (Deep)** | Knows IC / DSP / 3P / Linehaul + full booking permission matrix. Understands all edge cases (Linehaul auto-assignment, sprinkling logic, 3P escalation conditions). |
 | **Warehouses & Regions** | Understands all 4 warehouse types + when each is used. Knows regional differences and operational nuances. |
 | **Shipment Lifecycle (Full Flow)** | Knows full status flow: `DRAFT/CREATED → GEOCODED → ASSIGNED → PICKUP_* → DROPOFF_* / RETURN_* / CANCELLED_*`. Understands edge cases: `PICKUP_FAILED` recovery, `RESCHEDULED`, `RETURN_TO_CLIENT` flow, virtual statuses. |

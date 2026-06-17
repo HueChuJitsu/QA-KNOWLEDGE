@@ -132,19 +132,43 @@ USA
 
 Jitsu supports 4 client service types. When onboarding a new client, the Sales team negotiates which type the client falls into — this determines pricing and flow.
 
-### 4.1 The 4 Service Types (by enum code)
+### 4.1 Two layers: `service_type` (client) vs `logistic_type` (post-routing)
 
-In the database (field `logistic_type`), the enum codes are: `NEXT_DAYS(0), ON_DEMAND(1), SPECIALTY(2), FCTD(3)`.
+There are **two distinct fields** in two different tables. Don't confuse them:
 
-> **📌 NEXT_DAYS = Commingle (in business language)**
-> Older docs use 'COMMINGLE' but the actual enum code 0 is NEXT_DAYS. In the team they may still be called 'Commingle' (business term) but always NEXT_DAYS in code and DB.
+**1️⃣ `service_type` table — the client service type**
 
-| Type | Code | Description |
+The type negotiated with the client. The main values are **string codes** (not 0–3):
+
+| `service_type` | Meaning |
+| --- | --- |
+| `COMMINGLE` | Standard ship. Client delivers boxes to the Jitsu Warehouse first; Jitsu sorts and delivers. Delivery window typically 8 AM – 8 PM. Like normal e-commerce ship. |
+| `ONDEMAND` | Rapid / same-day. Jitsu picks up from Client Warehouse/Store and delivers directly. Speed-priority. Higher pricing. |
+| `SPECIALTY` | Special handling (cold chain, fragile, oversized). Pickup from Client. May require a specific vehicle / certified driver. |
+| `FCTD` | First-Class Transit Delivery — dedicated routes for a single client (not commingled with others). Contract-priced. |
+
+**2️⃣ `logistic_type` in the `assignments` table — set after routing**
+
+Once routing is done, each assignment carries a numeric `logistic_type` enum (0–3):
+
+| `logistic_type` | Code |
+| --- | --- |
+| `NEXT_DAYS` | 0 |
+| `ON_DEMAND` | 1 |
+| `SPECIALTY` | 2 |
+| `FCTD` | 3 |
+
+**Mapping `service_type` → `logistic_type`:**
+
+| `service_type` (client) | `logistic_type` (assignments) | Code |
 | --- | --- | --- |
-| **NEXT_DAYS (Commingle)** | 0 | Standard ship. Client delivers boxes to the Jitsu Warehouse first; Jitsu sorts and delivers. Delivery window typically 8 AM – 8 PM. Like normal e-commerce ship. |
-| **ON_DEMAND** | 1 | Rapid / same-day. Jitsu picks up from Client Warehouse/Store and delivers directly. Speed-priority. Higher pricing. |
-| **SPECIALTY** | 2 | Special handling (cold chain, fragile, oversized). Pickup from Client. May require a specific vehicle / certified driver. |
-| **FCTD** | 3 | First-Class Transit Delivery — dedicated routes for a single client (not commingled with others). Contract-priced. |
+| `COMMINGLE` | `NEXT_DAYS` | 0 |
+| `ONDEMAND` | `ON_DEMAND` | 1 |
+| `SPECIALTY` | `SPECIALTY` | 2 |
+| `FCTD` | `FCTD` | 3 |
+
+> **📌 COMMINGLE (service_type) = NEXT_DAYS (logistic_type, code 0)**
+> The one rename to watch: the client-facing `COMMINGLE` becomes `NEXT_DAYS` (enum 0) once it lands in `assignments` after routing. The other three keep effectively the same name (`ONDEMAND` → `ON_DEMAND`). In code/DB, always reference the exact field of the table you are querying.
 
 ### 4.2 Delivery Flow per Type
 
@@ -886,10 +910,13 @@ Useful when you need realistic data shapes in Staging without exposing real PII.
 1. Open the Dashboard and log in as admin.
 2. Open the left menu (hamburger icon).
 3. Click 'DSP' — go to the DSP page.
-4. Click 'New' to add a DSP courier. (Don't forget the Alias field — it is required.)
+4. Click 'New' to add a DSP courier. (The **Alias** field is optional — see note below.)
 5. Fill in valid DSP info and click ADD — the account is created and listed.
 6. Log in via the DSP Portal: `https://oauth2.staging.gojitsu.com/login?next=https://dsp.staging.gojitsu.com/`
 7. Set up payment for the DSP after creation.
+
+> **📌 What is Alias?**
+> `Alias` is an **optional** field set when creating a DSP courier. It acts as a short identifier / display name for the DSP company. The Alias is shown when creating a DSP driver, and when a DSP driver is created **from the DSP Portal** the username always follows the format `{Alias}-{username}`. If the DSP has no Alias set, it defaults to `dsp` (so the username becomes `dsp-{username}`).
 
 **Create a DSP Driver**
 1. First, create a DSP account (see above).
