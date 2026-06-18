@@ -719,7 +719,7 @@ Jitsu uses a standard test case template (Google Sheet) and the QMetry Excel imp
 | **Branch account** | DO NOT sign up for a Branch account in the Driver App on Prod. |
 | **Email** | Only use a Jitsu (@jitsu / @gojitsu / @axlehire) email when creating accounts. |
 | **Driver payout** | DO NOT trigger early payout in the Driver app. |
-| **Cleanup** | Delete the assignment / Booking Session / Schedule / Inbound layout in Prod after testing is done. |
+| **Cleanup** | Delete everything you created in Prod after testing is done: assignment / Booking Session / Schedule / Inbound layout — and if you ran routing, also delete the shipment(s), deselect the problem, and **delete the routing problem**. |
 
 ---
 
