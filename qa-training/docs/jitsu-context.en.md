@@ -182,7 +182,7 @@ Tracks progress; delayed/stalled → escalate: push → SMS → phone call from 
 - **Dispatch**: monitor the day's routes, review historical routes, plan future routes; filterable map; click a route → shipments; click a shipment → POD, event history, metadata.
 - **Inbound**: shows sort layout/warehouse/day; monitors PPH; build layouts manually when needed.
 - **Small Sort**: like Inbound but for bins (small parcels).
-- **Outbound Dashboard**: track drivers arriving at the delivery station.
+- **Outbound Dashboard**: track drivers arriving at the delivery station. Staging: https://dashboard.outbound.staging.gojitsu.com/warehouses
 - **Routing**: planners create routing problems + compute solutions.
 - **Admin Dashboard**: configure regions, clients, SLAs, warehouses, booking params, DSPs, driver programs, etc.
 - **DSP Portal**: DSPs manage their routes + fleet.
