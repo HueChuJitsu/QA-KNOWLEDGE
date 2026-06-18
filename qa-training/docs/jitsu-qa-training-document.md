@@ -343,10 +343,13 @@ Production: <system>.gojitsu.com
 | **Inbound** | Inbound sort operations, sort layout, monitor PPH |
 | **Small Sort** | Bin architecture for small parcel sorting |
 | **ACL** | Access Control List — manage permissions/roles |
-| **Outbound Dashboard** | Track expected/arriving drivers, parking, route staging |
+| **Outbound Dashboard** | Track expected/arriving drivers, parking, route staging. Staging: https://dashboard.outbound.staging.gojitsu.com/warehouses |
 
 > **💡 TIP**
 > Bookmark all Staging URLs first — that's where you'll spend most of your time. Beta URL = same pattern with `.beta`. Production = remove the `.staging.`/`.beta.` part entirely.
+
+> **⚠️ Outbound Dashboard is an exception to the URL pattern**
+> It does NOT follow `<system>.staging.gojitsu.com`. Use `https://dashboard.outbound.staging.gojitsu.com/warehouses`.
 
 ### 6.4 Mobile Apps
 
