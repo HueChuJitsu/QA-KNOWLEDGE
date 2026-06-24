@@ -21,7 +21,6 @@ QA training documentation and lessons, set in the context of the **Jitsu** last-
 | [jitsu-qa-webapp-release-process-full-guide.md](docs/jitsu-qa-webapp-release-process-full-guide.md) | Full QA workflow per environment + edge cases. |
 | [jitsu-qa-probation-goals.md](docs/jitsu-qa-probation-goals.md) | 2-month probation goals for Junior & Senior QA. |
 | [jitsu-qa-create-ic-driver.md](docs/jitsu-qa-create-ic-driver.md) | How-to: create an IC driver via the Driver App (sign-up → FCRA → active). |
-| [jitsu-qa-exclude-client-automatic-pod.md](docs/jitsu-qa-exclude-client-automatic-pod.md) | How-to: exclude a test client from automatic POD analysis (`automatic_pod_excluded_client_ids` Consul key, `s3-webhook` worker). |
 | [jitsu-qi-system.md](docs/jitsu-qi-system.md) | QI System operational reference — Deshi pipeline, `tc.md` inventory, 7 Jira states (Linehaul pilot). |
 
 ## Career framework

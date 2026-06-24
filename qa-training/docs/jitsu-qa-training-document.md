@@ -713,13 +713,25 @@ Jitsu uses a standard test case template (Google Sheet) and the QMetry Excel imp
 | Area | Rule |
 | --- | --- |
 | **Client name** | Always add the prefix 'Test' (e.g. `Test_Acme`). |
-| **POD review** | Add the client ID when adding shipments to the POD review. |
+| **POD review** | Add the test client's ID to the `automatic_pod_excluded_client_ids` Consul config so the captured POD is **not** sent for automatic analysis. Remove it after testing. See note below. |
 | **Background check** | DO NOT submit a real background check for test drivers. |
 | **Assignment label** | Only create assignment labels named 'TEST' or 'QA'. |
 | **Branch account** | DO NOT sign up for a Branch account in the Driver App on Prod. |
 | **Email** | Only use a Jitsu (@jitsu / @gojitsu / @axlehire) email when creating accounts. |
 | **Driver payout** | DO NOT trigger early payout in the Driver app. |
 | **Cleanup** | Delete everything you created in Prod after testing is done: assignment / Booking Session / Schedule / Inbound layout — and if you ran routing, also delete the shipment(s), deselect the problem, and **delete the routing problem**. |
+
+> **📝 Exclude a client from automatic POD analysis**
+> `automatic_pod_excluded_client_ids` is a list of client IDs excluded from automatic POD analysis. When a client's ID is in this list, a POD the driver captures on a stop is **not analyzed** after capture (the automatic POD-analysis step is skipped for that client's shipments). Add your **test** client's ID before testing POD, and **remove it** when done so the list does not accumulate stale test data.
+>
+> Consul key — set on the **`s3-webhook`** worker `attributes` in each environment:
+>
+> | Env | Path | Edit URL |
+> |---|---|---|
+> | **Production** | `prod/apps/workers/s3-webhook/attributes/automatic_pod_excluded_client_ids` | https://consul-ro-prod.gojitsu.sdm.network/ui/dc1/kv/prod/apps/workers/s3-webhook/attributes/automatic_pod_excluded_client_ids/edit |
+> | **Staging** | `staging/apps/workers/s3-webhook/attributes/automatic_pod_excluded_client_ids` | https://consul-staging.gojitsu.sdm.network/ui/dc1-staging/kv/staging/apps/workers/s3-webhook/attributes/automatic_pod_excluded_client_ids/edit |
+>
+> Note: this is a backend worker step, separate from the on-device driver-app POD capture/validation in [../../apps/driver-app/functions/pod.md](../../apps/driver-app/functions/pod.md).
 
 ---
 
