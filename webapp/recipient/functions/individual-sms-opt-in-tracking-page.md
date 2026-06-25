@@ -1,22 +1,22 @@
-# Individual Recipient SMS Opt-In (IMPL-194) — Configuration & Logic Guide
+# IMPL-194 — Individual Recipient SMS Opt-In (Feature Documentation)
 
-Recipients opt into SMS (and optionally call) delivery updates from the tracking page after verifying
-their identity against a configured shipment field. Once consented, the recipient-confirmed phone takes
-precedence over the manifest phone for delivery-notification SMS. **Phase 1 is shipment-scoped** — consent
-is stored in `PhoneOptInConsent` keyed by `shipment_id`; no `CustomerProfile` mutation, no cross-shipment
-propagation.
+## Overview
 
-## 1. Overview
+Recipients can opt into SMS (and optionally voice-call) delivery updates directly from the package
+tracking page. They enter a phone number, verify their identity against a configured shipment field, and
+consent. Once consented, the recipient-confirmed phone takes precedence over the manifest phone for all
+delivery-notification SMS.
+
+**Phase 1 is shipment-scoped:** consent is stored in `PhoneOptInConsent` keyed by `shipment_id`. No
+`CustomerProfile` mutation, no cross-shipment propagation. Profile-wide opt-in deferred to L2/L3.
 
 | Attribute | Value |
 | --- | --- |
-| Feature | Individual Recipient SMS Opt-In (Phase 1) |
-| Owner | ⚠️ TBD — confirm team (assignee: r.fox@gojitsu.com) |
 | Services | `recipient-api`, `recipient-web`, `worker` |
-| Data model | `PhoneOptInConsent` (collection `phone_opt_in_consent`, key `shipment_id`) |
+| Data model | `PhoneOptInConsent` (Mongo collection `phone_opt_in_consent`, key `shipment_id`) |
 | Tickets | IMPL-194 · follow-ups IMPL-213, IMPL-214 |
 
-## 2. Architecture & Components
+## Architecture & Components
 
 | Repo / Service | Component | Role |
 | --- | --- | --- |
@@ -26,71 +26,72 @@ propagation.
 | `recipient-web` | `SmsOptIn`, `SmsVerificationModal`, `DeliveryStore` | Tracking-page UI + actions |
 | `worker` | `SMSComposer`, 7 SMS workers, `SMSOptInWelcomeHandler` | Send gate + phone resolution + CTIA welcome |
 
-## 3. Configuration Reference
+## Endpoints (recipient-api)
 
-All settings follow the standard Jitsu pattern: **Consul global default + per-client override via
-`ClientSettings.trackingSettings`**. Resolution: `client override > Consul default > unset (fail-closed)`.
-Merged by `DeliveryManager.getTrackingSettings(clientId)` with a **300-second TTL cache** on the Consul read.
-
-### 3.1 `enable_recipient_sms_opt_in` — master gate
-
-| Field | Value |
+| Endpoint | Purpose |
 | --- | --- |
-| Type / Storage | `String "true"\|"false"` · Consul + client `trackingSettings` |
-| Read by | `recipient-api` (`DeliveryManager`), `recipient-web` (`SmsOptIn`) |
-| Default | `"false"` — **fail-closed** |
-| Purpose | Master switch. ≠ `"true"` ⇒ opt-in section hidden, endpoints inert |
+| `POST /delivery/{tracking_code}/{shipment_id}/sms-opt-in/verify` | Identity verification; two-bucket Redis rate-limit; issues one-time verify token |
+| `POST /delivery/{tracking_code}/{shipment_id}/sms-opt-in` | Submit consent; consume token; upsert `PhoneOptInConsent`; clear unsubscribers |
 
-### 3.2 `enable_recipient_call_opt_in` — voice-call gate
+## Configuration
 
-| Field | Value |
-| --- | --- |
-| Type / Storage | `String "true"\|"false"` · Consul + client `trackingSettings` |
-| Read by | `recipient-api`, `recipient-web` |
-| Default | `"false"` (voice-call not yet shipped) |
-| Purpose | Gates call checkbox. When off: UI hides it **and** API coerces `call_opt_in=true → false` server-side |
+Standard Jitsu pattern: **Consul global default + per-client override via `ClientSettings.trackingSettings`**.
+Resolution: `client override > Consul default > unset (fail-closed)`. Merged by
+`DeliveryManager.getTrackingSettings(clientId)` with a **300-second TTL cache** on the Consul read.
 
-### 3.3 `sms_opt_in_verification_field` — identity field
+| Key | Type | Default | Read by | Purpose |
+| --- | --- | --- | --- | --- |
+| `enable_recipient_sms_opt_in` | `"true"`/`"false"` | `"false"` (fail-closed) | recipient-api, recipient-web | Master gate. ≠`"true"` ⇒ section hidden, endpoints inert |
+| `enable_recipient_call_opt_in` | `"true"`/`"false"` | `"false"` | recipient-api, recipient-web | Voice-call checkbox. Off ⇒ UI hides it + API coerces `call_opt_in=true → false` |
+| `sms_opt_in_verification_field` | enum | unset ⇒ hidden | recipient-api, recipient-web | Field recipient must match to verify (see below) |
+| `enforced_sms_enabled` | `"true"`/`"false"` | unset (≡false) | recipient-web | `"true"` ⇒ already enrolled ⇒ section hidden |
+| `sms_opt_in_resubscribe_message` | free text | hardcoded FE default | recipient-web | Hint shown when `was_unsubscribed=true` |
 
-| Field | Value |
-| --- | --- |
-| Type / Storage | `String` (enum) · Consul + client `trackingSettings` |
-| Read by | `recipient-api` (`ShipmentFieldMatcher`), `recipient-web` (modal label) |
-| Default | unset ⇒ section hidden |
-| Allowed | `order_number` · `internal_id` · `zip` · `delivery_items` · `house_number` · `extra.<key>` |
+Default resubscribe message (FE constant): *"If you previously stopped our messages, reply START to our last
+delivery notification to re-activate updates."*
 
-`ShipmentFieldMatcher.extractExpectedValue(shipment, field)` mapping:
+### Verification field mapping (`ShipmentFieldMatcher`)
+
+`sms_opt_in_verification_field` allowed values and the shipment field each maps to:
 
 ```text
-order_number   → shipment.orderNumber
-internal_id    → shipment.internalId
-zip            → shipment.dropoffAddress.zipcode      (ZIP+4 prefix-matched both ways)
-delivery_items → shipment.deliveryItems
+order_number   → shipment.orderNumber                    (case-insensitive, trimmed)
+internal_id    → shipment.internalId                      (case-insensitive, trimmed)
+zip            → shipment.dropoffAddress.zipcode          (ZIP+4 prefix-matched both ways; compares 5-digit prefix)
+delivery_items → shipment.deliveryItems                   (case-insensitive, trimmed)
 house_number   → first whitespace token of dropoffAddress.street
 extra.<key>    → shipment.extra[key]
 ```
 
-### 3.4 `enforced_sms_enabled` — already-enrolled gate
+SMS opt-in uses `matchesTrimmedIgnoreCase`; POD verify reuses the same matcher with `matchesExact`
+(case-sensitive).
 
-| Field | Value |
-| --- | --- |
-| Type / Storage | `String "true"\|"false"` · Consul + client `trackingSettings` |
-| Read by | `recipient-web` |
-| Default | unset (≡ `"false"`) |
-| Purpose | `"true"` ⇒ recipient already enrolled ⇒ section hidden |
+### Consul keys (per environment)
 
-### 3.5 `sms_opt_in_resubscribe_message` — resubscribe hint
+```text
+/<env>/apps/recipient_api/default_settings/enable_recipient_sms_opt_in   = "true"   # prod: "false" until QA
+/<env>/apps/recipient_api/default_settings/enable_recipient_call_opt_in  = "false"
+/<env>/apps/recipient_api/default_settings/sms_opt_in_verification_field = <value>
 
-| Field | Value |
-| --- | --- |
-| Type / Storage | `String` (free text) · client `trackingSettings` (frontend `settings`) |
-| Read by | `recipient-web` only |
-| Default | hardcoded FE constant: *"If you previously stopped our messages, reply START to our last delivery notification to re-activate updates."* |
-| Notes | Shown only when `was_unsubscribed=true`; empty `""` ⇒ falls back to default |
+# Worker event-handler subscription (pod restart required)
+/<env>/apps/workers/<namespace>/handlers/com.axlehire.worker.event.handler.shipment.SMSOptInWelcomeHandler
+    → topic SHIPMENT.MODIFIER.sms-opt-in
+```
 
-## 4. Logic & Behavior
+## Data Model — `PhoneOptInConsent` (`phone_opt_in_consent`)
 
-### 4.1 Section visibility (evaluated frontend)
+| Field | DB column | Notes |
+| --- | --- | --- |
+| `shipmentId` | `shipment_id` | Primary key (L1 shipment-scoped) |
+| `optInPhoneNumber` | `opt_in_phone_number` | Reversible-encrypted |
+| `smsOptIn` | `sms_opt_in` | SMS consent flag |
+| `callOptIn` | `call_opt_in` | Voice-call consent flag |
+| `optInTimestamp` | `opt_in_timestamp` | UTC, consent time |
+| `optInIp` | `opt_in_ip` | Plaintext (TCPA audit; X-Forwarded-For leftmost token) |
+
+## Feature Logic
+
+### Section visibility (frontend)
 
 ```text
 visible       = enable_recipient_sms_opt_in == "true"
@@ -99,12 +100,10 @@ visible       = enable_recipient_sms_opt_in == "true"
 call checkbox  = visible && enable_recipient_call_opt_in == "true"
 ```
 
-### 4.2 Identity verification — `POST /delivery/{tracking_code}/{shipment_id}/sms-opt-in/verify`
+### Identity verification (`verify` endpoint)
 
-- Matches `request.referenceValue` against `sms_opt_in_verification_field` via
-  `ShipmentFieldMatcher.matchesTrimmedIgnoreCase` (trim + case-insensitive; `zip` is ZIP+4-aware).
-- On success: writes a single-use verification token (`makeSmsVerifiedKey`, value 2, TTL 900s) and resets
-  the per-(shipment, IP) rate bucket.
+- Matches input against `sms_opt_in_verification_field` via `ShipmentFieldMatcher.matchesTrimmedIgnoreCase`.
+- On success: writes a single-use verify token (TTL 900s) and resets the per-(shipment, IP) rate bucket.
 
 **Rate limiting** (hardcoded in `DeliveryManager.verifySmsOptInReference`):
 
@@ -113,61 +112,109 @@ call checkbox  = visible && enable_recipient_call_opt_in == "true"
 | per (shipment, IP) | 5 | 30 min (sliding) | cleared on successful verify |
 | per IP | 10 | 30 min (sliding) | never on success (cumulative) |
 
-`checkRateLimit(key, 6L\|11L, 1800L)` — pre-increment; TTL refreshed on every call ⇒ **sliding window**
-(block extends while attempts continue). Redis down ⇒ **503 fail-closed**. ⚠️ Not configurable.
+`checkRateLimit(key, 6L\|11L, 1800L)` — pre-increment; TTL refreshed on every call ⇒ **sliding window**.
+Redis down ⇒ **503 fail-closed**. ⚠️ Not configurable. IP from `X-Forwarded-For` (leftmost), fallback
+`getRemoteAddr()`.
 
-### 4.3 Consent submission — `POST /delivery/{tracking_code}/{shipment_id}/sms-opt-in`
+### Consent submission (`sms-opt-in` endpoint)
 
-1. Validate phone format (10–15 digits) before any side effect.
-2. Atomically consume the one-time verification token (`decrIfMoreThan`).
-3. Upsert `PhoneOptInConsent` (`upsertByShipmentId`): encrypted phone, `smsOptIn`, `callOptIn`,
-   `optInTimestamp` (UTC), `optInIp` (plaintext).
-4. Clear `CommunicationUnsubscriber` records for `SMS` + `SMS_SERVICE` (keeps `SMS_MARKETING`).
-5. `enable_recipient_call_opt_in != "true"` ⇒ coerce `callOptIn` to `false`.
+1. Validate phone format (10–15 digits).
+2. Atomically consume the one-time verify token.
+3. Upsert `PhoneOptInConsent` (encrypted phone, flags, UTC timestamp, plaintext IP).
+4. Clear `CommunicationUnsubscriber` for `SMS` + `SMS_SERVICE` (keeps `SMS_MARKETING`).
+5. If `enable_recipient_call_opt_in != "true"` ⇒ coerce `callOptIn` to `false`.
 
-### 4.4 Opt-in phone resolution — `SMSComposer.resolveRecipientPhone(shipment, consent)`
+### Opt-in phone resolution (`SMSComposer.resolveRecipientPhone`)
 
 ```text
 if consent.smsOptIn == true && consent.optInPhoneNumber non-blank → opt-in phone
 else                                                              → shipment.customer.phoneNumber (manifest)
 ```
 
-`isShipmentSmsEnabled` gate: `shipment.smsEnabled == true` OR consent `smsOptIn == true`. The resolver is
-**type-agnostic** — all recipient-notification SMS must prefer the opt-in phone.
+Gate `isShipmentSmsEnabled`: `shipment.smsEnabled == true` **OR** consent `smsOptIn == true` — so opt-in
+works even when the manifest flag is false. Resolution is **type-agnostic**: all recipient-notification SMS
+prefer the opt-in phone.
 
-> ⚠️ **Known gap (BUG):** SMS triggered from `data-orchestrator` (`AssignmentManager.sendSmsToClient`,
-> line ~7129) hardcodes `shipment.customer.phoneNumber` and bypasses this resolution. Affects
-> move-to-next-day, move-to-previous-day, and the dispatcher "Send SMS Notification" action — all send to
-> the manifest phone. The opt-in resolution exists only in worker `SMSComposer`, not in data-orchestrator.
-
-### 4.5 First-contact welcome — `SMSOptInWelcomeHandler`
+### First-contact welcome (`SMSOptInWelcomeHandler`)
 
 Subscribes to `SHIPMENT.MODIFIER.sms-opt-in`. Fires `CTIA_REPLY_START` only when `sms_opt_in=true`,
-`was_unsubscribed=false`, `has_phone=true` (gate). Re-subscribers do **not** receive the welcome again.
-Per-shipment dedupe lock (5-min TTL).
+`was_unsubscribed=false`, `has_phone=true`. Re-subscribers do not receive the welcome again. Per-shipment
+dedupe lock (5-min TTL).
 
-### 4.6 Unsubscribe types (`unsubscribers` collection, `PreferenceType`)
+### Unsubscribe types (`unsubscribers`, `PreferenceType`)
 
 | Type | Scope | Blocks |
 | --- | --- | --- |
-| `SMS` | global STOP | all SMS (service + marketing) |
-| `SMS_SERVICE` | transactional | service SMS (delivery updates, etc.) |
+| `SMS` | global STOP | all SMS |
+| `SMS_SERVICE` | transactional | service SMS (delivery updates) |
 | `SMS_MARKETING` | promotional | marketing SMS |
 
-| Action | Effect on `unsubscribers` |
+| Action | Effect |
 | --- | --- |
 | STOP (keyword) | creates `SMS` + `SMS_SERVICE` + `SMS_MARKETING` |
-| Opt-in submit (tracking page) | clears `SMS` + `SMS_SERVICE`, keeps `SMS_MARKETING` |
+| Opt-in submit | clears `SMS` + `SMS_SERVICE`, keeps `SMS_MARKETING` |
 | START (keyword) | clears all three |
 
-`ineligible=true` ⇒ unsubscribe from driver QUIT/SUSPENDED (auto-removed on reactivation);
-`false` ⇒ user-initiated. Carrier-level (Twilio/Bandwidth) STOP also requires texting START to truly
-re-enable delivery — clearing the DB record alone is not enough.
+`ineligible=true` ⇒ driver QUIT/SUSPENDED block (auto-removed on reactivation); `false` ⇒ user-initiated.
+Carrier-level (Twilio/Bandwidth) STOP also requires texting START to truly re-enable — clearing the DB
+record alone is not enough.
 
-### 4.7 Manual STOP/START trigger (testing on staging, dummy provider)
+## SMS Send Pipelines
 
-Publish a `CommunicationMessage` to queue `incoming_sms` (exchange `INCOMING_COMMUNICATION`);
-`IncomingCommunicationViaSMSWorker.replyStandardCTIA()` processes it as a real inbound SMS.
+All paths resolve opt-in phone via `SMSComposer.resolveRecipientPhone`.
+
+| Pipeline | Path | SMS types | Timing |
+| --- | --- | --- | --- |
+| A — Immediate | `ShipmentStatusUpdater` (sms_trigger.yaml) → `SMSComposer` | Stop-status notifications (pickup/dropoff success/fail, coming-soon, next-in-line, about-delivery-pod, feedback, reminder) | Real-time |
+| B — Queue | `SmsQueueWorker` → `sms_queue` → `SMSQueueProcessSchedule` | Access-code/address confirm (`CONFIRM_*`), DAS auto-corrected, reason-specific dropoff-failed (×7) | Scheduled per region |
+| T — SmsTelephony | `RecipientSignWorker` / dataorch → `SmsTelephonyWorker` → `SMSComposer` | `SIGNATURE_TOKEN_SMS`, `ID_SCAN_SMS`, `TRACKING_LINK` | On-demand |
+| — CTIA welcome | `SMSOptInWelcomeHandler` → `SMSComposer.triggerMessaging` | `CTIA_REPLY_START` | On opt-in |
+
+### sms_queue (Pipeline B) lifecycle
+
+- **Status:** `NOT_CONFIRMED` (enqueued, eligible) → `SENT`; `OPENED` (re-processed after 5 min); `IGNORED`
+  (shipment DISPOSABLE); `CONFIRMED`.
+- **Enqueue triggers** (`SmsQueueMessageType`): `FAILED_STOP`, `DRIVER_ACCEPT_ROUTE`, `INBOUND_SCAN`,
+  `DELIVERABLE_ADDRESS_INCIDENT`.
+- **Scheduled send** (`SMSQueueProcessSchedule`, per region): queries NOT_CONFIRMED (last 1 day) + OPENED
+  (>5 min), filters `sentCount < 2` (max 2 sends), Redis lock per shipment, sends via `SMSComposer`.
+
+## Acceptance Criteria (from ticket)
+
+- Recipient can opt-in to SMS delivery updates when `enable_recipient_sms_opt_in=true`.
+- Verification accepts any configured `sms_opt_in_verification_field` (incl. `zip` ZIP+4, `house_number`).
+- Per-(shipment, IP) cap 5 / 30-min ⇒ 6th returns 429; per-IP cap 10 / 30-min ⇒ 11th returns 429.
+- Successful verify resets only the per-(shipment, IP) bucket; per-IP stays cumulative.
+- Submitting a previously unsubscribed phone clears `CommunicationUnsubscriber` for SMS+SMS_SERVICE,
+  returns `was_unsubscribed: true`.
+- First-contact opt-in (`was_unsubscribed=false`) triggers `CTIA_REPLY_START`.
+- All subsequent recipient-notification SMS prefer the opt-in phone over the manifest phone.
+- `PhoneOptInConsent` records include consent timestamp + client IP for TCPA audit.
+- Voice-call checkbox hidden when `enable_recipient_call_opt_in != "true"`; `call_opt_in=true`
+  server-coerced to `false`.
+- Consul defaults flow through `getTrackingSettings`; per-client overrides win.
+
+## Apply / Restart Checklist
+
+| Service | Type | Restart? | Reason |
+| --- | --- | --- | --- |
+| recipient-api | API | Yes | new endpoints + `DeliveryManager` opt-in flow |
+| worker (7 SMS workers) | Worker | Yes | `PhoneOptInConsentDAO` injected at startup |
+| event-processor (`SMSOptInWelcomeHandler`) | Worker | Yes | new Consul subscription key |
+| recipient-web | Frontend | Deploy | new `SmsOptIn` component |
+| Consul key change only | — | No | 300s TTL — wait ~5 min |
+
+## Phase 1 Intentional Omissions
+
+- `Shipment.smsEnabled` not mutated (avoids coupling opt-in to manifest data model).
+- `CustomerProfile` not written (L2 profile-wide opt-in deferred).
+- Phone-keyed DAO methods unused (L1 is shipment-keyed only).
+
+## Manual STOP / START trigger (testing on staging, dummy provider)
+
+To simulate an inbound START/STOP without a real phone, publish a `CommunicationMessage` to queue
+`incoming_sms` (exchange `INCOMING_COMMUNICATION`); `IncomingCommunicationViaSMSWorker.replyStandardCTIA()`
+processes it as a real inbound SMS and updates the `unsubscribers` collection.
 
 ```json
 {
@@ -184,86 +231,47 @@ Publish a `CommunicationMessage` to queue `incoming_sms` (exchange `INCOMING_COM
   `+1` + last 10 digits). **Not** the delivery number.
 - `recipients`: delivery number — only needs to be non-empty.
 
-## 5. Data Model — `PhoneOptInConsent` (`phone_opt_in_consent`)
+## UI Test Cases
 
-| Field | DB column | Notes |
-| --- | --- | --- |
-| `shipmentId` | `shipment_id` | Primary key (L1 shipment-scoped) |
-| `optInPhoneNumber` | `opt_in_phone_number` | Reversible-encrypted |
-| `smsOptIn` | `sms_opt_in` | SMS consent flag |
-| `callOptIn` | `call_opt_in` | Voice-call consent flag |
-| `optInTimestamp` | `opt_in_timestamp` | UTC, consent time |
-| `optInIp` | `opt_in_ip` | Plaintext (TCPA audit) |
+### Section UI
 
-## 6. Apply / Restart Checklist
-
-| Service | Type | Restart? | Reason |
-| --- | --- | --- | --- |
-| recipient-api | API | Yes | new endpoints + `DeliveryManager` opt-in flow |
-| worker (7 SMS workers) | Worker | Yes | `PhoneOptInConsentDAO` injected at startup |
-| event-processor (`SMSOptInWelcomeHandler`) | Worker | Yes | new Consul subscription key |
-| recipient-web | Frontend | Deploy | new `SmsOptIn` component |
-| Consul key change only | — | No | 300s TTL — wait ~5 min |
-
-### Consul keys (per environment)
-
-```text
-/<env>/apps/recipient_api/default_settings/enable_recipient_sms_opt_in   = "true"   # prod: "false" until QA
-/<env>/apps/recipient_api/default_settings/enable_recipient_call_opt_in  = "false"
-/<env>/apps/recipient_api/default_settings/sms_opt_in_verification_field = <value>
-
-# Worker event-handler subscription (pod restart required)
-/<env>/apps/workers/<namespace>/handlers/com.axlehire.worker.event.handler.shipment.SMSOptInWelcomeHandler
-    → topic SHIPMENT.MODIFIER.sms-opt-in
-```
-
-## 7. Test Cases
-
-### 7.1 Section UI
-
-| Test case | Expected result |
+| Test case | Expectation |
 | --- | --- |
-| SMS enabled, shipment not yet delivered | Section shown under progress tracking: textbox **Mobile Phone Number** (placeholder `e.g +1 (555) 123-4567`), checkbox **Text me with delivery updates**, button **Sign Up for Updates** (disabled) |
-| SMS + call enabled, shipment not yet delivered | As above + checkbox **Call me with delivery issues** |
+| SMS enabled, shipment not yet delivered | Section shown: textbox **Mobile Phone Number** (placeholder `e.g +1 (555) 123-4567`), checkbox **Text me with delivery updates**, button **Sign Up for Updates** (disabled) |
+| SMS + call enabled | As above + checkbox **Call me with delivery issues** |
 | `enforced_sms_enabled = true` | Section hidden |
-| Shipment delivered | "Get Delivery Updates by SMS" section not shown |
-| Shipment status `RETURN_SUCCEEDED` | Section shown |
-| Shipment has no phone number | Section still shown |
+| Shipment delivered | Section not shown |
+| `enable_recipient_sms_opt_in = false` (client override) | Section hidden |
 
-### 7.2 Phone number validation
+### Phone validation
 
-| Test case | Expected result |
+| Test case | Expectation |
 | --- | --- |
-| Input text into phone number → Sign Up | Error: *Please enter a valid phone number.* |
-| Input invalid phone number → Sign Up | Error: *Please enter a valid phone number.* |
-| Input valid phone number | "Verify Your Identity" pop-up shown, matching `sms_opt_in_verification_field` |
+| Input text / invalid phone → Sign Up | Error: *Please enter a valid phone number.* |
+| Input valid phone | "Verify Your Identity" pop-up shown, matching `sms_opt_in_verification_field` |
 
-### 7.3 Identity verification & rate limit
+### Verification & rate limit
 
-| Test case | Expected result |
+| Test case | Expectation |
 | --- | --- |
 | Incorrect verification value | Error: *Unable to verify. Please check your connection and try again.* |
-| More than 5 attempts (per shipment + IP) | Cannot get delivery updates |
-| More than 10 attempts per IP | Pop-up "Verify Your Identity": *Too many incorrect attempts. Please contact support for assistance.* + **Cancel** button |
+| 6th attempt (per shipment+IP) | Cannot get delivery updates (429) |
+| 11th attempt per IP | Pop-up: *Too many incorrect attempts. Please contact support for assistance.* + Cancel |
 
-### 7.4 Verification field variants (`sms_opt_in_verification_field`)
+### Verification field variants
 
-| Setting | Expected "Verify Your Identity" UI / behavior |
+| Setting | Prompt / behavior |
 | --- | --- |
-| `order_number` | Prompt *Please enter your Order Number…*, Order Number textbox, **Cancel** & **Verify** |
-| `internal_id` | Prompt *Please enter your Reference Number…*, Reference Number textbox, **Cancel** & **Verify** |
-| `delivery_items` | Prompt *Please enter your Delivery Items…*, Delivery Items textbox, **Cancel** & **Verify** |
-| `zip` (UI) | Prompt *Please enter your Delivery ZIP Code…*, Delivery ZIP Code textbox, **Cancel** & **Verify** |
-| `zip` — input ZIP5 | Can update the opt-in phone |
-| `zip` — input ZIP4 | Error: *The reference you entered does not match. Please try again.* |
-| `zip` — input ZIP9 | Section still shown |
-| `extra.<key>` (e.g. `job_id`) | ⚠️ TBD — confirm prompt/label/behavior |
+| `order_number` | "Order Number" textbox, case-insensitive |
+| `internal_id` | "Reference Number" textbox |
+| `delivery_items` | "Delivery Items" textbox |
+| `zip` | "Delivery ZIP Code"; ZIP5 or ZIP+4 match on 5-digit prefix |
+| `house_number` | First token of dropoff street |
+| `extra.<key>` | Title-cased key; value at `shipment.extra[key]` |
 
-### 7.5 Unsubscribe / re-subscribe & CTIA
+### Unsubscribe / re-subscribe
 
-| Test case | Expected result |
+| Test case | Expectation |
 | --- | --- |
-| Opt-in with a previously unsubscribed phone | *You're signed up for delivery updates!* + *If you previously stopped our messages, reply START to our last delivery notification to re-activate updates.* |
-| Shipment-detail log when phone unsubscribed | Log records `was_unsubscribed: true` |
-| Opt-in for **Call only** (no SMS) | `CTIA_REPLY_START` is **not** sent |
-
+| Opt-in with previously unsubscribed phone | *You're signed up...* + resubscribe hint; `was_unsubscribed: true`; no CTIA welcome |
+| Opt-in Call only (no SMS) | `CTIA_REPLY_START` NOT sent |
