@@ -13,6 +13,7 @@ own sub-folder under `functions/`.
 | Function | File | Status |
 |----------|------|--------|
 | Delivery by | [functions/delivery-by/delivery-by.md](functions/delivery-by/delivery-by.md) | Draft |
+| Delivery by — OTD-by-region config | [functions/delivery-by/driver-otd-by-delivery-by.md](functions/delivery-by/driver-otd-by-delivery-by.md) | Draft |
 
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.

@@ -55,6 +55,12 @@ All available in the project workspace. Don't try to read everything Day 1 — f
 | **Database Cheat Sheet** | From Day 2 onwards — common SQL/MongoDB queries. |
 | **Postman Setup & Usage Guide** | From Day 5 — how to import the QA Master Collection and use it. |
 
+## 📊 QA Test / Sprint Report
+
+Live tracker for QA test cases and sprint results.
+
+- [QA Test / Sprint Report (Google Sheet)](https://docs.google.com/spreadsheets/d/1Lh1eV4bUkb8r5DrpdhHZCtX4sW8mzlgQr4NwD9Rh4U0/edit?gid=1920953460#gid=1920953460)
+
 ## 🌟 The 5 Golden Rules
 
 Internalize these from Day 1. They'll save you a lot of stress.

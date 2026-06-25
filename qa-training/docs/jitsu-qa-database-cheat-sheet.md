@@ -86,6 +86,9 @@ LIMIT 30;
 
 💡 *Useful when testing a flow specific to a client service type.*
 
+> **📌 `service_type` (string) vs `logistic_type` (0–3)**
+> The client's negotiated type lives in the `service_type` table as **string codes**: `COMMINGLE`, `ONDEMAND`, `SPECIALTY`, `FCTD`. After routing, each row in the `assignments` table carries a numeric `logistic_type` enum: `NEXT_DAYS=0`, `ON_DEMAND=1`, `SPECIALTY=2`, `FCTD=3`. Mapping: `COMMINGLE → NEXT_DAYS(0)`, `ONDEMAND → ON_DEMAND(1)`, `SPECIALTY → SPECIALTY(2)`, `FCTD → FCTD(3)`. Query the field that matches the table you are in.
+
 ### Client Services & Regions
 
 #### 🔍 Q4. Check client_service entries for a client
