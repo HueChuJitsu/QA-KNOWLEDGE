@@ -31,6 +31,8 @@ Sorted dwell (min): `0.5 9.7 12 17.2 31.4 [32.4] [71.4] 71.9 74.4 78.8 971.7 985
 
 # Problem Solve Dashboard — Field Reference
 
+> **⚠️ Important for testing:** Use an account whose scope includes **Warehouse Staff** and **Warehouse Manager** roles only. Accounts with broader scopes (e.g. admin) may bypass permission gates and produce misleading test results.
+
 **URL:** `/sortation/:center_id/problem-solve`
 **Scope:** No-route shipments only (V1). All data is facility-scoped via `facilityId` resolved from `center_id`.
 
@@ -73,6 +75,28 @@ Sorted dwell (min): `0.5 9.7 12 17.2 31.4 [32.4] [71.4] 71.9 74.4 78.8 971.7 985
 | Sparkline | Line chart | `c.trend` (array of floats) | Last 7 data points |
 | Resolved count | Footer: `{n} resolved of {m} created` | `c.resolved` | bigint → number |
 | Created count | Footer | `c.created` | bigint → number |
+
+### Formula
+
+Computed on `workflow_instance_views`; the card shows a **flow rate** over the window, not a per-parcel value. Source: `conductor/crates/query/src/problem_solve/{queries.rs → get_problem_solve_completion, model.rs → completion_rate}`.
+
+`ratePct = resolved ÷ created × 100` (0 when `created = 0`). It is a **flow rate**, so `resolved` parcels may have been *opened earlier* — the rate **can exceed 100%** while a backlog drains.
+
+| Count | Window | Per-parcel predicate |
+|---|---|---|
+| **created** | `[now − W, now]` | `created_at` in window |
+| **resolved** | `[now − W, now]` | `current_state = 'completed'` AND `completed_at` in window |
+| **prior_created** | `[now − 2W, now − W]` | `created_at` in prior window |
+| **prior_resolved** | `[now − 2W, now − W]` | `current_state = 'completed'` AND `completed_at` in prior window |
+
+- `deltaPtsVsPrior` = `rate(W) − rate(prior W)`, in **percentage points**. When the prior window has no created parcels its rate is treated as `0`, so the delta equals the current rate.
+- `trend` (sparkline) = per-bucket completion rate, oldest → newest, using the same completed-only predicate per bucket.
+
+> **⚠️ INB-1241 — only `completed` counts, not "terminal".** `resolved` keys off `current_state = 'completed'`, **not** the broader `is_terminal` flag. A workflow can go terminal four ways — `completed`, `failed`, `aborted`, `dismissed` ([conductor `WorkflowInstanceState::is_terminal()`](https://github.com/gojitsucom/conductor/blob/dev/crates/shared/src/enums.rs)) — but only `completed` is a genuine resolution. **Dismissed** (admin retire, INB-1235), **failed**, and **aborted** are excluded from the numerator. Before the fix ([conductor#46](https://github.com/gojitsucom/conductor/pull/46)) the query counted all terminal rows, so dismissing one duplicate inflated the rate (e.g. a bogus 33% on staging). The same completed-only fix also applies to the Dwell, Avg-iterations, and multi-facility 7d-dwell cohorts.
+>
+> **QA check:** abort/dismiss/fail an open workflow → `resolved` and `ratePct` must **not** increase (Open count drops by 1, but the parcel is not a completion). Only a workflow reaching `completed` raises the rate.
+
+**Warehouse 144 example (staging, 7d window, 2026-06-25):** `created = 23`, `resolved = 12` → `ratePct = 52.17%`. `prior_created = 0` → prior rate = 0 → `deltaPtsVsPrior = +52.17 pts`. Aborting an open workflow left `resolved = 12` unchanged (proving the fix) while Open dropped 11 → 10.
 
 ---
 
