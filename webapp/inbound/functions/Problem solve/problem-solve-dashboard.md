@@ -404,6 +404,82 @@ Four paths reach a terminal state. The first is automatic; the rest are driven b
 
 ---
 
+## Simulating data — calling Conductor gRPC directly
+
+To drive the **Missing (re-induction overdue)** flow without the physical induction step, call `CommitContainerToSortInduction` directly. This commits a no-route container to a sort-induction line and starts the 20-min `locate_package` countdown for every shipment inside it. Conductor uses gRPC-web, so you can call it with `curl`.
+
+### Endpoint
+
+```
+POST https://api.conductor.staging.gojitsu.com/conductor.v1.ContainerService/CommitContainerToSortInduction
+```
+
+| | |
+|---|---|
+| **Service / method** | `conductor.v1.ContainerService / CommitContainerToSortInduction` |
+| **Content-type** | `application/grpc-web+proto` |
+| **Auth** | `Authorization: Bearer <access token>` — grab the `at` cookie value from a logged-in `inbound.staging.gojitsu.com` session (DevTools → Application → Cookies), or copy the `authorization` header from any conductor request in the Network tab |
+
+**Request fields** (proto `CommitContainerToSortInductionRequest`):
+
+| Field | Field # | Required | Notes |
+|---|---|---|---|
+| `container_id` | 1 | ✅ | The container/cart id (as shown in the Aging table's Container column) |
+| `induction_location_id` | 2 | ✅ | Free-form induction line id, e.g. `induction_line_1` |
+| `committed_by` | 3 | — | Optional operator id |
+
+**Response** echoes `container_id`, the `shipment_ids` snapshot inside the container, `induction_location_id`, and server `committed_at`.
+
+### Easiest: build the request body with Python
+
+gRPC-web frames the protobuf as `[1 byte flag = 0x00][4-byte big-endian length][protobuf bytes]`. This script builds the body, calls the endpoint, and prints the readable response:
+
+```bash
+CONTAINER_ID="fbb7b2f2-dbf8-4b52-ac59-dd04ea4fe687"
+INDUCTION_LINE="induction_line_1"
+TOKEN="<paste your bearer token>"
+
+python3 -c "
+import struct
+def es(f,v):
+    e=v.encode(); return bytes([(f<<3)|2,len(e)])+e
+proto = es(1,'$CONTAINER_ID') + es(2,'$INDUCTION_LINE')
+open('/tmp/commit.bin','wb').write(b'\x00'+struct.pack('>I',len(proto))+proto)"
+
+curl -s -D /tmp/hdr.txt \
+  'https://api.conductor.staging.gojitsu.com/conductor.v1.ContainerService/CommitContainerToSortInduction' \
+  -H 'content-type: application/grpc-web+proto' \
+  -H 'x-grpc-web: 1' \
+  -H 'origin: https://inbound.staging.gojitsu.com' \
+  -H "authorization: Bearer $TOKEN" \
+  --data-binary @/tmp/commit.bin -o /tmp/body.bin
+
+grep -i 'grpc-status\|grpc-message' /tmp/hdr.txt
+python3 -c "d=open('/tmp/body.bin','rb').read();print(''.join(chr(b) if 32<=b<127 else '.' for b in d))"
+```
+
+- **Success** → `grpc-status: 0` and the readable body shows the container id, the `SH_…` ids inside, the line, and the `committed_at` timestamp.
+- The 20-min `locate_package` deadline = `committed_at` + 20 min. If those shipments are not inducted to sort by then, they flip to **Missing**.
+
+### Common errors
+
+| `grpc-status` | `grpc-message` | Meaning |
+|---|---|---|
+| `0` | — | Success |
+| `9` (FAILED_PRECONDITION) | `container is already committed to sort induction` | This container was already committed — **commit is one-way, it cannot be undone**. Use a fresh container_id (or have the event-store stream reset by infra). |
+| `9` | `container is empty` | No shipments in the container — nothing to commit |
+| `16` (UNAUTHENTICATED) | — | Token missing/expired — refresh it from the browser session |
+
+> **You cannot un-commit a container.** Once committed, its status is permanent (Invariant: "one obligation chain, never reopen"). To re-test the commit flow, use a container that has never been committed.
+
+### Verifying the result
+
+- **Workflow reacted** — the shipment's no-route workflow `updated_at` should bump within ~1 s of `committed_at` (the commit event reached the workflow and armed the timer).
+- **Missing fired** — after the 20-min deadline a `locate_package` task appears on the workflow and the parcel reads **Missing** on the dashboard (allow a few seconds of batch-polling lag).
+- **Cancelled** — if the shipment is inducted to sort before the deadline, `sort_to_position` spawns, the timer is cancelled, and `locate_package` never appears.
+
+---
+
 ## QA / Test notes
 
 **Happy path**
