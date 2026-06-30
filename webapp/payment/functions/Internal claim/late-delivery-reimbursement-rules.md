@@ -349,6 +349,12 @@ WHERE client_id = 646;
 - **Precondition:** Claim auto-approved but `approvedCreditAmount = 0.0` due to threshold suppression
 - **Expected:** `isApprovedWithPayout() = false` → `applyLateDeliveryCredit()` not reached
 
+### TC08 — Lateness exceeds the only configured tier (no matching tier)
+
+- **Precondition:** Rule configured with a single tier only — `1-15 min late: 50% of delivery fee;`
+- **Input:** Shipment delivered **16 min late** (above the `1-15` upper bound, no `16+` tier defined)
+- **Expected:** No tier matches → `late_delivery_credit` is **not returned** (null)
+
 ---
 
 ## Relevant Code Locations
