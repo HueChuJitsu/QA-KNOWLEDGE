@@ -355,6 +355,18 @@ WHERE client_id = 646;
 - **Input:** Shipment delivered **16 min late** (above the `1-15` upper bound, no `16+` tier defined)
 - **Expected:** No tier matches → `late_delivery_credit` is **not returned** (null)
 
+### TC09 — Rule string in wrong format (unparseable)
+
+- **Precondition:** `late_reimburse_amount = 'true'`, `price_tickets.base` exists, claim APPROVED, but
+  `late_delivery_payout_rule` is in an invalid format (e.g. uses `DROP_OFF` instead of `delivery fee`,
+  or malformed tier syntax)
+- **Input:** Shipment delivered late with a valid delivery fee
+
+| Field | Result | Reason |
+|-------|--------|--------|
+| `delivery_fee` | **Shown** | `result.deliveryFee = fee` is set first, independent of the rule |
+| `late_delivery_credit` | **Not shown** | `calculateLateDeliveryCredit()` can't parse the rule → returns `null` → `result.lateDeliveryCredit = null` |
+
 ---
 
 ## Relevant Code Locations
