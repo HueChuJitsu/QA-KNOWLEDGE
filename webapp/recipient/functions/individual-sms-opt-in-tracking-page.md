@@ -100,6 +100,12 @@ visible       = enable_recipient_sms_opt_in == "true"
 call checkbox  = visible && enable_recipient_call_opt_in == "true"
 ```
 
+### ZIP code masking in "Deliver to:" (privacy)
+
+**New behavior (shipped with this feature):** the **zipcode** in the **Deliver to:** section is only
+displayed **after the recipient has been authenticated** (identity verified). Before verification the
+ZIP is hidden/masked, so it cannot be used to guess the `zip` verification value.
+
 ### Identity verification (`verify` endpoint)
 
 - Matches input against `sms_opt_in_verification_field` via `ShipmentFieldMatcher.matchesTrimmedIgnoreCase`.
@@ -296,6 +302,8 @@ processes it as a real inbound SMS and updates the `unsubscribers` collection.
 | `enforced_sms_enabled = true` | Section hidden |
 | Shipment delivered | Section not shown |
 | `enable_recipient_sms_opt_in = false` (client override) | Section hidden |
+| ZIP in **Deliver to:** before recipient is authenticated | Zipcode hidden/masked |
+| ZIP in **Deliver to:** after recipient is authenticated | Zipcode displayed |
 
 ### Phone validation
 
