@@ -329,3 +329,34 @@ processes it as a real inbound SMS and updates the `unsubscribers` collection.
 | --- | --- |
 | Opt-in with previously unsubscribed phone | *You're signed up...* + resubscribe hint; `was_unsubscribed: true`; no CTIA welcome |
 | Opt-in Call only (no SMS) | `CTIA_REPLY_START` NOT sent |
+
+### SMS types routed to the opt-in phone
+
+Once a recipient has opted in, **all** recipient-notification SMS prefer the opt-in phone over the
+manifest phone (`SMSComposer.resolveRecipientPhone`). Each of the following is sent to the opt-in phone:
+
+| Test case | Expectation |
+| --- | --- |
+| `INFORM_RECIPIENT_PICKUP_SUCCEEDED` sent when pickup succeeds | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_PICKUP_SUCCEEDED_SIGNATURE_REQUIRED` sent when pickup succeeds and `signatureRequired=true` | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_PICKUP_FAILED` sent when pickup fails | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_PICKUP_REMINDER` sent when the pickup reminder fires | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_SUCCEEDED` sent when delivery completes | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_SUCCEEDED_REASON` sent when delivery completes with a reason (left at door) | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_COMING_SOON` sent when driver is arriving soon | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_ABOUT_DELIVERY_POD` sent when POD/delivery info is shared | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_TRACKING_LINK` sent when a dispatcher sends the tracking link | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_FEEDBACK_REQUEST` sent after delivery | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED` sent when delivery fails (generic) | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_REASON` sent when delivery fails with a configured reason | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_UNRECOVERABLE` sent when delivery fails unrecoverably | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_NO_ACCESS_CODE` sent when delivery fails due to no access code | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_WRONG_ACCESS_CODE` sent when delivery fails due to wrong access code | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_ACCESS_BLOCKED` sent when delivery fails due to access blocked | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_ADDRESS_INVALID` sent when delivery fails due to invalid address | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_COMMUNICATION_ISSUE` sent when delivery fails due to a communication issue | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_ACCESS_DENIED_BY_DOORMAN` sent when delivery fails due to doorman denial | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_BUSINESS_CLOSED` sent when delivery fails due to business closed | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_SIGNATURE_TOKEN_SMS` sent when a signature link is requested | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_ID_SCAN_SMS` sent when an ID-scan link is requested | Sent to the opt-in phone |
+| `CTIA_REPLY_START` sent on first-contact opt-in | Sent to the opt-in phone; **NOT** re-sent for re-subscribers |
