@@ -159,6 +159,60 @@ dedupe lock (5-min TTL).
 Carrier-level (Twilio/Bandwidth) STOP also requires texting START to truly re-enable — clearing the DB
 record alone is not enough.
 
+## Shipment Detail Log
+
+After a recipient updates the opt-in phone, a log is written and shown in the **shipment detail**
+activity feed in the form:
+
+```text
+Application [recipient] sms-opt-in Shipment [shipment_id]
+```
+
+Log content (`SHIPMENT.MODIFIER.sms-opt-in` event):
+
+```json
+{
+  "id": "",
+  "category": "SHIPMENT",
+  "type": "MODIFIER",
+  "action": "sms-opt-in",
+  "ts": "{ts time when update the opt-in}",
+  "source": {
+    "attributes": {
+      "version": "1.0.23"
+    },
+    "uid": "AP_recipient"
+  },
+  "object": {
+    "uid": "SH_{shipment_id}"
+  },
+  "subject": {
+    "uid": "AP_recipient"
+  },
+  "state": {
+    "call_opt_in": "true/false",
+    "has_phone": "true/false",
+    "sms_opt_in": "true/false",
+    "was_unsubscribed": "true/false"
+  },
+  "ephemeral": false
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `action` | Always `sms-opt-in` |
+| `ts` | Timestamp when the opt-in was updated |
+| `object.uid` | `SH_` + `shipment_id` |
+| `source.uid` / `subject.uid` | `AP_recipient` (event originates from the recipient app) |
+| `state.call_opt_in` | Voice-call consent flag at update time |
+| `state.has_phone` | Whether an opt-in phone is present |
+| `state.sms_opt_in` | SMS consent flag at update time |
+| `state.was_unsubscribed` | Whether the phone was previously unsubscribed |
+
+This is the same `SHIPMENT.MODIFIER.sms-opt-in` event that `SMSOptInWelcomeHandler` subscribes to
+(see [First-contact welcome](#first-contact-welcome-smsoptinwelcomehandler)).
+
 ## SMS Send Pipelines
 
 All paths resolve opt-in phone via `SMSComposer.resolveRecipientPhone`.
