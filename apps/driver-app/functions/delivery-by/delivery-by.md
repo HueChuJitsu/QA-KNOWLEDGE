@@ -163,6 +163,7 @@ Late     : predictedEnd > deliveryByTime
 
 - **BS (Booking Session) detail screen:** does **not** show Delivery By. Delivery By has been removed from the Booking Session level (see [Remove 'Deliver By' from Booking Session Level](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2395045896)) — it is only surfaced on the Pickup / Route Confirmation / active route screens, not on the BS detail screen.
 - **Ticket / Booking confirmation screen:** also does **not** show Delivery By (same Booking Session-level removal as above).
+- **Total booked ticket — driver has not booked ETA:** Delivery By is **not** shown until the driver has booked an ETA. No ETA booked ⇒ no Delivery By on the total booked ticket.
 - **Tutorial route:** banner is hard-coded to hide, the ETD API returns an empty response — **cannot be overridden by config**.
 - **DSP route (`courierId != null`):** not supported yet, no timeline (Open Item in MOB-2449).
 - **3+ routes:** `transitRouteTime = 0` (inaccurate) — Open Item in MOB-2449.
