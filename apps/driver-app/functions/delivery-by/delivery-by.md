@@ -56,6 +56,15 @@ deliveryBy    = roundUpToNearest5Min(rawDeliveryBy)
 Until the route is reserved, the region window config is shown; only on reserve does the calculated
 Delivery By take over.
 
+#### Ticket (booked zone)
+
+Delivery By for a ticket is based on the P95 estimated route time of the booked zone:
+
+```
+rawDeliveryBy = P95_est_route_time (for the booked zone) × buffered_pct
+deliveryBy    = roundUpToNearest5Min(rawDeliveryBy)
+```
+
 #### Single route
 
 ```
