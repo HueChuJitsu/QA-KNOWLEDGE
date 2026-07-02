@@ -37,6 +37,34 @@ Deliver By is the feature that shows the delivery deadline to the driver. It has
 
 ### 3.1 Delivery By Time — calculation
 
+#### Reserve Your Route screen (before vs after reserve)
+
+On the **Reserve Your Route** screen, each assignment shows Delivery By in two phases:
+
+| Phase | Delivery By source |
+|-------|--------------------|
+| Before the driver reserves the route | Static config `delivery_window_by_region` (Consul) |
+| After the driver reserves the route | Calculated via the formula below |
+
+**Formula applied on reserve:**
+
+```
+rawDeliveryBy = Last ETA time + (travel_time + service_time + pickup_time) × buffered_pct
+deliveryBy    = roundUpToNearest5Min(rawDeliveryBy)
+```
+
+Until the route is reserved, the region window config is shown; only on reserve does the calculated
+Delivery By take over.
+
+#### Ticket (booked zone)
+
+Delivery By for a ticket is based on the P95 estimated route time of the booked zone:
+
+```
+rawDeliveryBy = P95_est_route_time (for the booked zone) × buffered_pct
+deliveryBy    = roundUpToNearest5Min(rawDeliveryBy)
+```
+
 #### Single route
 
 ```
@@ -65,12 +93,15 @@ deliveryBy    = roundUpToNearest5Min(rawDeliveryBy)
 
 #### Clamping
 
-| Condition | Result |
-|---|---|
-| `deliveryBy > latestTime` | use `latestTime` (default 8:00 PM) |
-| `deliveryBy < earliestTime` | use `earliestTime` (default 7:00 AM) |
+| Mode | Condition | Result |
+|------|-----------|--------|
+| static | `deliveryBy > latestTime` | use `latestTime` (default 8:00 PM) |
+| **dynamic** (`dynamic_calc_enabled=true`) | `deliveryBy > midnightLocal` | use `midnightLocal` (default `PT23H59M` = 23:59) — see [3.6](#36-midnight_local--dynamic-upper-cap-mob-2934) |
+| both | `deliveryBy < earliestTime` | use `earliestTime` (default 7:00 AM) |
 
 **Fallback:** if there is no ETA or the feature is disabled → `7:00 PM` (device local time).
+
+> **MOB-2934:** in dynamic mode the upper cap is now `midnight_local` (default 23:59), **not** `latest_time` (8 PM). `latest_time` still applies for static mode.
 
 ### 3.2 ETD — calculation
 
@@ -156,11 +187,108 @@ Late     : predictedEnd > deliveryByTime
 | `travel_time_from_previous_stop` | Double | Travel time from the previous stop |
 | `estimated_arrival_ts` | DateTime | Realtime ETA (updated from GPS) |
 
+### 3.6 `midnight_local` — dynamic upper cap (MOB-2934)
+
+MOB-2934 adds a single new config field to **each region** inside `delivery_window_by_region` (Consul),
+shared by **both ticket and route** (same class `RegionDeliveryCfg`).
+
+```java
+// RegionDeliveryCfg.java (dispatch-bizlogic PR #1496)
+// eg PT23H59M
+@JsonProperty("midnight_local")
+public String midnightLocal;
+```
+
+| Attribute | Value |
+|-----------|-------|
+| JSON key | `midnight_local` |
+| Type | `String`, ISO-8601 duration measured from start of day (e.g. `PT23H59M` = 23h59m = 23:59) |
+| Required? | No — optional |
+| Default when empty/absent | `DEFAULT_MIDNIGHT_LOCAL = "PT23H59M"` (23:59) |
+| Purpose | Upper cap of `deliveryBy` in **dynamic** mode, replacing `latest_time` (8 PM) |
+| Scope | Dynamic only (`dynamic_calc_enabled=true`); static still uses `latest_time` |
+
+**Example region config (JSON inside `delivery_window_by_region`):**
+
+```json
+{
+  "region": "CHI",
+  "buffered_pct": 0.3,
+  "earliest_time": "PT1H",          // 1:00 AM
+  "latest_time": "PT20H",           // 8 PM — kept, but NO LONGER used for the dynamic cap
+  "midnight_local": "PT23H59M",     // ← NEW (MOB-2934): cap = 23:59
+  "dynamic_calc_enabled": true,
+  "delivery_time_window_template": "%s - %s"
+}
+```
+
+**Key points for QA / DevOps:**
+
+- **Not mandatory** to add to Consul — if unset, the code falls back to default `PT23H59M`. This satisfies the MOB-2934 AC *"Consul `delivery_window_by_region` values unchanged"* (nothing needs editing).
+- `latest_time` still exists in the config but in **dynamic mode** is no longer used for the `deliveryBy` upper bound (only **static** still uses it, still = 8 PM).
+- Only set `midnight_local` to something other than `PT23H59M` if a specific region wants a cap other than midnight.
+- Config is read **once at app startup** (`DriverAppApi.java:1444` → `loadRegionDeliveryCfg`, cached for the app lifetime, no live Consul watch) → adding/editing `midnight_local` on Consul requires a **driver-app-api restart** to take effect (no hot-reload).
+
+#### Cap formula & ordering
+
+```
+final_deliver_by = min(computed_deliver_by, MIDNIGHT_LOCAL)
+```
+
+where `MIDNIGHT_LOCAL` = 23:59 on the **delivery day** in the route's **local/region timezone**
+(default `PT23H59M`).
+
+**Ordering (important):**
+
+1. Round the computed deliver-by **up to the nearest 5 minutes**.
+2. **Then** apply the midnight cap. The 23:59 cap is the **final hard ceiling and is NOT re-rounded**.
+
+This prevents an 11:59 PM value from rolling over to 12:00 AM. The cap does **not** roll to the next
+calendar day. (Test example: a computed value is capped at `PT11H24M` → `11:24`, an intentionally
+non-5-min value, confirming the cap is not re-rounded.)
+
+#### What is NOT changed
+
+- `shipment.dropoff_latest_ts` — unchanged.
+- Internal-OTD 8 PM classification — unchanged.
+- Consul `delivery_window_by_region` values — unchanged (default applies when `midnight_local` absent).
+- `earliest_time` (window start) — unchanged.
+
+Driver OTD recomputes against the new (uncapped-to-8PM) `delivery_by_ts`, not the 8 PM cap.
+
+#### Worked examples (from ticket)
+
+| # | Last pickup | +Buffer | Computed | Cap | Result (Driver App display) |
+|---|-------------|---------|----------|-----|-----------------------------|
+| 1 | 5 PM | 4.5h | 9:30 PM | 11:59 PM | **9:30 PM** ✓ (extends past 8 PM, not clamped) |
+| 2 | 5 PM | 4.5h | 9:30 PM | 11:59 PM | **9:30 PM** ✓ |
+| 3 | 8 PM | 4.5h | 12:30 AM (+1 day) | 11:59 PM | **11:59 PM** ✓ (capped at local midnight, no date roll) |
+
+#### Code locations & PRs
+
+| Path | Change |
+|------|--------|
+| `DeliveryWindowManager.getDeliveryTimeWindow` (single-route) | Upper bound `latestTime` now built from `cfg.midnightLocal` (fallback `DEFAULT_MIDNIGHT_LOCAL = "PT23H59M"`) instead of `cfg.latestTime` (8 PM) |
+| `TicketDeliveryWindowManager.getDeliveryTimeWindow` (ticket / same-time chain) | Identical change → cap applied uniformly to single routes and chains |
+| `RegionDeliveryCfg` | New optional JSON field `midnight_local` |
+| `DriverAppApi.java:1444` → `loadRegionDeliveryCfg` | Region config loaded once at startup |
+
+| PR | Repo | Purpose | Status |
+|----|------|---------|--------|
+| [#1496](https://github.com/gojitsucom/dispatch-bizlogic/pull/1496) | `dispatch-bizlogic` | Core fix — cap deliver-by at `midnight_local` instead of `latest_time` (8 PM) | Merged |
+| [#1769](https://github.com/gojitsucom/driver-app-api/pull/1769) | `driver-app-api` | Bump `dispatch-bizlogic` dependency `1.0.54 → 1.0.56-SNAPSHOT` to ship the fix | Merged |
+
+> ⚠️ **SNAPSHOT dependency:** the shipped version is `1.0.56-SNAPSHOT`. Confirm a released (non-SNAPSHOT) build is promoted before prod.
+> ℹ️ `dispatch-bizlogic` is a shared library compiled into `driver-app-api` — it is **not** deployed independently.
+
 ## 4. QA / Test notes
 <!-- Happy cases, edge cases, sample data, things to watch when testing -->
 
 ### Edge cases / things to watch
 
+- **BS (Booking Session) detail screen:** does **not** show Delivery By. Delivery By has been removed from the Booking Session level (see [Remove 'Deliver By' from Booking Session Level](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2395045896)) — it is only surfaced on the Pickup / Route Confirmation / active route screens, not on the BS detail screen.
+- **Ticket / Booking confirmation screen:** also does **not** show Delivery By (same Booking Session-level removal as above).
+- **Total booked ticket — driver has not booked ETA:** Delivery By is **not** shown until the driver has booked an ETA. No ETA booked ⇒ no Delivery By on the total booked ticket.
 - **Tutorial route:** banner is hard-coded to hide, the ETD API returns an empty response — **cannot be overridden by config**.
 - **DSP route (`courierId != null`):** not supported yet, no timeline (Open Item in MOB-2449).
 - **3+ routes:** `transitRouteTime = 0` (inaccurate) — Open Item in MOB-2449.
@@ -168,6 +296,20 @@ Late     : predictedEnd > deliveryByTime
 - **Multiple routes:** only the **Global** switch is supported, no per-region support.
 - **`stops.status`:** the MOB-2449 spec incorrectly says `COMPLETED` — the actual value is `SUCCEEDED`.
 - **When multiple routes is not enabled:** routes without an ETA always fall back to `7:00 PM`.
+
+### MOB-2934 — midnight cap test cases (verified on staging: PASSED)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 1 | Computed deliver-by ≤ 8 PM | Stored `delivery_by_ts` + displayed window upper bound = computed value (no regression) |
+| 2 | Single late-pickup route, computed = 9:30 PM | Deliver-by = **9:30 PM** (extends past 8 PM, not clamped) |
+| 3 | Computed = 12:30 AM next day | Deliver-by = **11:59 PM** on the delivery day (capped at local midnight, no date roll-over) |
+| 4 | Round-up edge: computed just under midnight (e.g. 11:57 PM) | 5-min round-up must **not** roll to 12:00 AM; final ≤ 11:59 PM same day |
+| 5 | Same-time chain running past midnight | All routes share the chain-level computed value + the 23:59 cap uniformly |
+| 6 | Non-PT region | Cap is 23:59 in the route's **local/region** timezone; `earliest_time`, `dropoff_latest_ts`, internal-OTD 8 PM classification all unchanged |
+
+**Screen behavior verified on staging (Delivery By not shown):** BS detail · Ticket Booking confirmation ·
+Total booked ticket when driver has **not** booked ETA. Shown once ETA booked / route reserved.
 
 ### Suggested cases to cover
 
@@ -194,6 +336,7 @@ Late     : predictedEnd > deliveryByTime
 | MOB-2530 | Configurable same-time pickup threshold | Done |
 | MOB-2528 | Re-call traffic-info on accept route | — |
 | MOB-467 | Add new field DELIVERY_BY for single route | Rollout Ready |
+| MOB-2934 | Allow deliver-by time to exceed the 8 PM cutoff — cap at `midnight_local` (23:59 local) instead of `latest_time` | Staging Review Finished (PASSED) |
 
 ### Confluence Documentation
 
