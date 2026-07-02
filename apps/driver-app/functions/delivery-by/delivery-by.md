@@ -227,7 +227,59 @@ public String midnightLocal;
 - **Not mandatory** to add to Consul — if unset, the code falls back to default `PT23H59M`. This satisfies the MOB-2934 AC *"Consul `delivery_window_by_region` values unchanged"* (nothing needs editing).
 - `latest_time` still exists in the config but in **dynamic mode** is no longer used for the `deliveryBy` upper bound (only **static** still uses it, still = 8 PM).
 - Only set `midnight_local` to something other than `PT23H59M` if a specific region wants a cap other than midnight.
-- Config is read **once at app startup** → adding/editing `midnight_local` on Consul requires a **driver-app-api restart** to take effect (no hot-reload).
+- Config is read **once at app startup** (`DriverAppApi.java:1444` → `loadRegionDeliveryCfg`, cached for the app lifetime, no live Consul watch) → adding/editing `midnight_local` on Consul requires a **driver-app-api restart** to take effect (no hot-reload).
+
+#### Cap formula & ordering
+
+```
+final_deliver_by = min(computed_deliver_by, MIDNIGHT_LOCAL)
+```
+
+where `MIDNIGHT_LOCAL` = 23:59 on the **delivery day** in the route's **local/region timezone**
+(default `PT23H59M`).
+
+**Ordering (important):**
+
+1. Round the computed deliver-by **up to the nearest 5 minutes**.
+2. **Then** apply the midnight cap. The 23:59 cap is the **final hard ceiling and is NOT re-rounded**.
+
+This prevents an 11:59 PM value from rolling over to 12:00 AM. The cap does **not** roll to the next
+calendar day. (Test example: a computed value is capped at `PT11H24M` → `11:24`, an intentionally
+non-5-min value, confirming the cap is not re-rounded.)
+
+#### What is NOT changed
+
+- `shipment.dropoff_latest_ts` — unchanged.
+- Internal-OTD 8 PM classification — unchanged.
+- Consul `delivery_window_by_region` values — unchanged (default applies when `midnight_local` absent).
+- `earliest_time` (window start) — unchanged.
+
+Driver OTD recomputes against the new (uncapped-to-8PM) `delivery_by_ts`, not the 8 PM cap.
+
+#### Worked examples (from ticket)
+
+| # | Last pickup | +Buffer | Computed | Cap | Result (Driver App display) |
+|---|-------------|---------|----------|-----|-----------------------------|
+| 1 | 5 PM | 4.5h | 9:30 PM | 11:59 PM | **9:30 PM** ✓ (extends past 8 PM, not clamped) |
+| 2 | 5 PM | 4.5h | 9:30 PM | 11:59 PM | **9:30 PM** ✓ |
+| 3 | 8 PM | 4.5h | 12:30 AM (+1 day) | 11:59 PM | **11:59 PM** ✓ (capped at local midnight, no date roll) |
+
+#### Code locations & PRs
+
+| Path | Change |
+|------|--------|
+| `DeliveryWindowManager.getDeliveryTimeWindow` (single-route) | Upper bound `latestTime` now built from `cfg.midnightLocal` (fallback `DEFAULT_MIDNIGHT_LOCAL = "PT23H59M"`) instead of `cfg.latestTime` (8 PM) |
+| `TicketDeliveryWindowManager.getDeliveryTimeWindow` (ticket / same-time chain) | Identical change → cap applied uniformly to single routes and chains |
+| `RegionDeliveryCfg` | New optional JSON field `midnight_local` |
+| `DriverAppApi.java:1444` → `loadRegionDeliveryCfg` | Region config loaded once at startup |
+
+| PR | Repo | Purpose | Status |
+|----|------|---------|--------|
+| [#1496](https://github.com/gojitsucom/dispatch-bizlogic/pull/1496) | `dispatch-bizlogic` | Core fix — cap deliver-by at `midnight_local` instead of `latest_time` (8 PM) | Merged |
+| [#1769](https://github.com/gojitsucom/driver-app-api/pull/1769) | `driver-app-api` | Bump `dispatch-bizlogic` dependency `1.0.54 → 1.0.56-SNAPSHOT` to ship the fix | Merged |
+
+> ⚠️ **SNAPSHOT dependency:** the shipped version is `1.0.56-SNAPSHOT`. Confirm a released (non-SNAPSHOT) build is promoted before prod.
+> ℹ️ `dispatch-bizlogic` is a shared library compiled into `driver-app-api` — it is **not** deployed independently.
 
 ## 4. QA / Test notes
 <!-- Happy cases, edge cases, sample data, things to watch when testing -->
@@ -244,6 +296,20 @@ public String midnightLocal;
 - **Multiple routes:** only the **Global** switch is supported, no per-region support.
 - **`stops.status`:** the MOB-2449 spec incorrectly says `COMPLETED` — the actual value is `SUCCEEDED`.
 - **When multiple routes is not enabled:** routes without an ETA always fall back to `7:00 PM`.
+
+### MOB-2934 — midnight cap test cases (verified on staging: PASSED)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 1 | Computed deliver-by ≤ 8 PM | Stored `delivery_by_ts` + displayed window upper bound = computed value (no regression) |
+| 2 | Single late-pickup route, computed = 9:30 PM | Deliver-by = **9:30 PM** (extends past 8 PM, not clamped) |
+| 3 | Computed = 12:30 AM next day | Deliver-by = **11:59 PM** on the delivery day (capped at local midnight, no date roll-over) |
+| 4 | Round-up edge: computed just under midnight (e.g. 11:57 PM) | 5-min round-up must **not** roll to 12:00 AM; final ≤ 11:59 PM same day |
+| 5 | Same-time chain running past midnight | All routes share the chain-level computed value + the 23:59 cap uniformly |
+| 6 | Non-PT region | Cap is 23:59 in the route's **local/region** timezone; `earliest_time`, `dropoff_latest_ts`, internal-OTD 8 PM classification all unchanged |
+
+**Screen behavior verified on staging (Delivery By not shown):** BS detail · Ticket Booking confirmation ·
+Total booked ticket when driver has **not** booked ETA. Shown once ETA booked / route reserved.
 
 ### Suggested cases to cover
 
@@ -270,7 +336,7 @@ public String midnightLocal;
 | MOB-2530 | Configurable same-time pickup threshold | Done |
 | MOB-2528 | Re-call traffic-info on accept route | — |
 | MOB-467 | Add new field DELIVERY_BY for single route | Rollout Ready |
-| MOB-2934 | Add `midnight_local` per-region config as dynamic deliveryBy cap (dispatch-bizlogic PR #1496) | — |
+| MOB-2934 | Allow deliver-by time to exceed the 8 PM cutoff — cap at `midnight_local` (23:59 local) instead of `latest_time` | Staging Review Finished (PASSED) |
 
 ### Confluence Documentation
 
