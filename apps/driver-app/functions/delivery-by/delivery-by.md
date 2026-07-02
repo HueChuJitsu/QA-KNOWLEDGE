@@ -93,12 +93,15 @@ deliveryBy    = roundUpToNearest5Min(rawDeliveryBy)
 
 #### Clamping
 
-| Condition | Result |
-|---|---|
-| `deliveryBy > latestTime` | use `latestTime` (default 8:00 PM) |
-| `deliveryBy < earliestTime` | use `earliestTime` (default 7:00 AM) |
+| Mode | Condition | Result |
+|------|-----------|--------|
+| static | `deliveryBy > latestTime` | use `latestTime` (default 8:00 PM) |
+| **dynamic** (`dynamic_calc_enabled=true`) | `deliveryBy > midnightLocal` | use `midnightLocal` (default `PT23H59M` = 23:59) — see [3.6](#36-midnight_local--dynamic-upper-cap-mob-2934) |
+| both | `deliveryBy < earliestTime` | use `earliestTime` (default 7:00 AM) |
 
 **Fallback:** if there is no ETA or the feature is disabled → `7:00 PM` (device local time).
+
+> **MOB-2934:** in dynamic mode the upper cap is now `midnight_local` (default 23:59), **not** `latest_time` (8 PM). `latest_time` still applies for static mode.
 
 ### 3.2 ETD — calculation
 
@@ -184,6 +187,48 @@ Late     : predictedEnd > deliveryByTime
 | `travel_time_from_previous_stop` | Double | Travel time from the previous stop |
 | `estimated_arrival_ts` | DateTime | Realtime ETA (updated from GPS) |
 
+### 3.6 `midnight_local` — dynamic upper cap (MOB-2934)
+
+MOB-2934 adds a single new config field to **each region** inside `delivery_window_by_region` (Consul),
+shared by **both ticket and route** (same class `RegionDeliveryCfg`).
+
+```java
+// RegionDeliveryCfg.java (dispatch-bizlogic PR #1496)
+// eg PT23H59M
+@JsonProperty("midnight_local")
+public String midnightLocal;
+```
+
+| Attribute | Value |
+|-----------|-------|
+| JSON key | `midnight_local` |
+| Type | `String`, ISO-8601 duration measured from start of day (e.g. `PT23H59M` = 23h59m = 23:59) |
+| Required? | No — optional |
+| Default when empty/absent | `DEFAULT_MIDNIGHT_LOCAL = "PT23H59M"` (23:59) |
+| Purpose | Upper cap of `deliveryBy` in **dynamic** mode, replacing `latest_time` (8 PM) |
+| Scope | Dynamic only (`dynamic_calc_enabled=true`); static still uses `latest_time` |
+
+**Example region config (JSON inside `delivery_window_by_region`):**
+
+```json
+{
+  "region": "CHI",
+  "buffered_pct": 0.3,
+  "earliest_time": "PT1H",          // 1:00 AM
+  "latest_time": "PT20H",           // 8 PM — kept, but NO LONGER used for the dynamic cap
+  "midnight_local": "PT23H59M",     // ← NEW (MOB-2934): cap = 23:59
+  "dynamic_calc_enabled": true,
+  "delivery_time_window_template": "%s - %s"
+}
+```
+
+**Key points for QA / DevOps:**
+
+- **Not mandatory** to add to Consul — if unset, the code falls back to default `PT23H59M`. This satisfies the MOB-2934 AC *"Consul `delivery_window_by_region` values unchanged"* (nothing needs editing).
+- `latest_time` still exists in the config but in **dynamic mode** is no longer used for the `deliveryBy` upper bound (only **static** still uses it, still = 8 PM).
+- Only set `midnight_local` to something other than `PT23H59M` if a specific region wants a cap other than midnight.
+- Config is read **once at app startup** → adding/editing `midnight_local` on Consul requires a **driver-app-api restart** to take effect (no hot-reload).
+
 ## 4. QA / Test notes
 <!-- Happy cases, edge cases, sample data, things to watch when testing -->
 
@@ -225,6 +270,7 @@ Late     : predictedEnd > deliveryByTime
 | MOB-2530 | Configurable same-time pickup threshold | Done |
 | MOB-2528 | Re-call traffic-info on accept route | — |
 | MOB-467 | Add new field DELIVERY_BY for single route | Rollout Ready |
+| MOB-2934 | Add `midnight_local` per-region config as dynamic deliveryBy cap (dispatch-bizlogic PR #1496) | — |
 
 ### Confluence Documentation
 
