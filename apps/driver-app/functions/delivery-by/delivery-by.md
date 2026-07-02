@@ -37,6 +37,25 @@ Deliver By is the feature that shows the delivery deadline to the driver. It has
 
 ### 3.1 Delivery By Time — calculation
 
+#### Reserve Your Route screen (before vs after reserve)
+
+On the **Reserve Your Route** screen, each assignment shows Delivery By in two phases:
+
+| Phase | Delivery By source |
+|-------|--------------------|
+| Before the driver reserves the route | Static config `delivery_window_by_region` (Consul) |
+| After the driver reserves the route | Calculated via the formula below |
+
+**Formula applied on reserve:**
+
+```
+rawDeliveryBy = Last ETA time + (travel_time + service_time + pickup_time) × buffered_pct
+deliveryBy    = roundUpToNearest5Min(rawDeliveryBy)
+```
+
+Until the route is reserved, the region window config is shown; only on reserve does the calculated
+Delivery By take over.
+
 #### Single route
 
 ```
