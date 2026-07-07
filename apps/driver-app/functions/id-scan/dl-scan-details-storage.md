@@ -47,7 +47,7 @@ Previously only the scan event itself was recorded — the extracted field value
 - Config `enable_require_id_scan = true` in the `item_metadata` collection / owner = `RG_{region}` will apply for all driver types.
 - For IC drivers: just need to config `enable_require_id_scan = true` in `item_metadata` / owner = `DR_{driver_id}`.
 
-**Storage:** new Mongo collection `scan_event_dl_details`, 1:1 with the DL scan event.
+**Storage:** new Mongo collection `scan_event_dl_details`, 1:1 with the DL scan event (if `dl_details` has data).
 
 **`dl_details` schema — all fields optional:**
 
@@ -58,6 +58,7 @@ Previously only the scan event itself was recorded — the extracted field value
 | `address_street`, `address_city`, `address_state`, `address_zip` | Yes |
 | `dl_number` | Yes |
 | `expiration_date`, `issuing_state` | No (plaintext, kept queryable) |
+| `scan_event_id` | link to the `id` from `driver_license_scan_event` collection |
 
 **Endpoints & roles:**
 
