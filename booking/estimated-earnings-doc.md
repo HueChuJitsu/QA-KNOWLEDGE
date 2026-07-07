@@ -1,14 +1,19 @@
 # Estimated Earnings & Typical Driver Earnings Range Documentation
 
+*Last updated: 2026-06-29*
+*Source: [Confluence](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2526707726/Estimated+Earnings+Typical+Driver+Earnings+Range+Documentation)*
+
+---
+
 ## Related Tickets
 
 | Ticket | Title | Status |
-|--------|-------|--------|
+| --- | --- | --- |
 | [MOB-2518](https://gojitsu.atlassian.net/browse/MOB-2518) | [BE] Calculate Estimated Earnings & Typical Driver Earnings Range | DONE |
 | [MOB-2517](https://gojitsu.atlassian.net/browse/MOB-2517) | [BE] Display Estimated Earnings & Typical Driver Earnings Range | DONE |
 | [MOB-2541](https://gojitsu.atlassian.net/browse/MOB-2541) | [BE] Store Estimated Earnings & Typical Driver Earnings Range | DONE |
 | [MOB-2693](https://gojitsu.atlassian.net/browse/MOB-2693) | [BE] Display Estimated Earnings & Typical Driver Earnings Range in Booking session details screen | DONE |
-| [MOB-2841](https://gojitsu.atlassian.net/browse/MOB-2841) | [BE] Refine driver earnings range: forecast pre-routing, actual Booking Session values after routing | STAGING REVIEW FINISHED |
+| [MOB-2841](https://gojitsu.atlassian.net/browse/MOB-2841) | [BE] Refine driver earnings range: forecast pre-routing, actual Booking Session values after routing | DONE |
 
 ---
 
@@ -31,17 +36,17 @@ The feature is controlled by a region config flag (`enabledRegions` in Consul) f
 ## 2. Configuration
 
 | Environment | Config Path |
-|-------------|-------------|
-| Staging | `consul-staging → apps/driverappapi/estimated_earnings_cfg` |
-| Production | `consul-prod → apps/driverappapi/estimated_earnings_cfg` |
+| --- | --- |
+| Staging | consul-staging → `apps/driverappapi/estimated_earnings_cfg` |
+| Production | consul-prod → `apps/driverappapi/estimated_earnings_cfg` |
 
 Key config fields:
 
 | Field | Description | Default |
-|-------|-------------|---------|
-| `enabledRegions` | Regions where the feature is active (e.g. `["JFK", "CLE", "LAX", "PHX"]`) | — |
+| --- | --- | --- |
+| `enabledRegions` | Regions where the feature is active (e.g. `["JFK", "CLE", "LAX", "PHX"]` or `["*"]` for all regions) | — |
 | `minSampleSize` | Minimum zone-level route count before using ALL_ZONE fallback | 5 |
-| `minTypicalEarningsSpreadUsd` | Minimum $ spread enforced on Most Drivers Earn when sample < minSampleSize and spread < threshold | 10.0 |
+| `minTypicalEarningsSpreadUsd` | Minimum $ spread enforced on Most Drivers Earn when sample < minSampleSize and spread < threshold | 10 |
 | `typicalEarningsMin` | Percentile for Most Drivers Earn lower bound | P20 |
 | `typicalEarningsMax` | Percentile for Most Drivers Earn upper bound | MAX |
 | `averageEarnings` | Percentile for Estimated Earnings (pre-routing) | P50 |
@@ -51,12 +56,12 @@ Key config fields:
 ## 3. Ticket Breakdown
 
 | Ticket | Title | Scope | Status |
-|--------|-------|-------|--------|
+| --- | --- | --- | --- |
 | MOB-2518 | [BE] Calculate Estimated Earnings & Typical Driver Earnings Range | Worker calculates and stores earnings stats in `route_tour_cost_stats` MongoDB collection | DONE |
 | MOB-2517 | [BE] Display Estimated Earnings & Typical Driver Earnings Range | BE API exposes calculated values; displayed on total booked ticket & active ticket screens | DONE |
 | MOB-2541 | [BE] Store Estimated Earnings & Typical Driver Earnings Range | Stores snapshot of 3 earnings fields in ticket MongoDB collection at time of booking | DONE |
 | MOB-2693 | [BE] Display Estimated Earnings & Typical Driver Earnings Range in Booking session details screen | BE API exposes values for booking session (BS) details screen | DONE |
-| **MOB-2841** | **[BE] Refine driver earnings range: forecast pre-routing, actual Booking Session values after routing** | Refines sourcing logic: pre/post-routing distinction, pay-formula min (WAT-2086), spread floor, clamping invariant. BE-only; no FE changes. | STAGING REVIEW FINISHED |
+| **MOB-2841** | **[BE] Refine driver earnings range: forecast pre-routing, actual Booking Session values after routing** | Refines sourcing logic: pre/post-routing distinction, pay-formula min (WAT-2086), spread floor, clamping invariant. BE-only; no FE changes. | DONE |
 
 ---
 
@@ -69,14 +74,14 @@ A background worker (`worker-est-route-time-aggregation`) runs on a schedule to 
 - **Data source:** `assignments` table — completed routes only (`status = COMPLETED`, `courier_id IS NULL`, `tour_cost > 0`)
 - **Lookback window:** trailing 21 days (configured via `tour_cost_trailing_window_in_days` in `mongo.schedule`; falls back to `trailing_window_in_days` if not set)
 - **Grouping:** by zone + region + day of week
-- **Fallback:** if zone-level count < `minSampleSize` (default 5 in Consul), use ALL_ZONE + region + day of week
+- **Fallback:** if zone-level count < `minSampleSize` (default 5 in Consul), use ALL_ZONE + region + day of week — **with MOB-2841: do not fallback to ALL_ZONE** *(updated 2026-06-29)*
 - **Results stored in:** `route_tour_cost_stats` MongoDB collection
 - Worker overwrites all existing records for the region when it runs
 
 Default percentile config (configurable per region via Consul):
 
 | Field | DB Field | Default Percentile |
-|-------|----------|--------------------|
+| --- | --- | --- |
 | Estimated Earnings | `average_earnings` | P50 |
 | Most Drivers Earn (min) | `typical_earnings_min` | P20 |
 | Most Drivers Earn (max) | `typical_earnings_max` | MAX |
@@ -91,32 +96,32 @@ Two outputs are computed independently: **Typical Earnings range (Most Drivers E
 
 **Routing completion** is determined by the presence of assignments in `ticketBook.items` with `tourCost > 0`.
 
-#### Typical Earnings range (Most Drivers Earn — P20 to MAX)
+#### a. Typical Earnings range (Most Drivers Earn — P20 to MAX)
 
 | Condition | Source |
-|-----------|--------|
-| Pre-routing, ≥ `minSampleSize` routes in zone-region-day | Historical P20–MAX; no change |
+| --- | --- |
+| Pre-routing, ≥ `minSampleSize` routes in zone-region-day (ignore spread) | Historical P20–MAX; no change |
 | Pre-routing, < `minSampleSize` routes, spread (MAX − P20) ≥ $10 | Historical P20–MAX; no change |
 | Pre-routing, < `minSampleSize` routes, spread (MAX − P20) < $10 | Typical max = P20 + `minTypicalEarningsSpreadUsd` ($10), guaranteeing minimum $10 spread |
 | Pre-routing, 0 routes (no data in `route_tour_cost_stats`) | Falls back to pay formula min → forecast max |
 | After routing (any route count) | Actual routing min–max for zone |
 
-#### Absolute Min–Max (Earnings Range)
+#### b. Absolute Min–Max (Earnings Range)
 
 | Field | Pre-routing | After routing |
-|-------|-------------|---------------|
+| --- | --- | --- |
 | **Min** | Pay formula min (WAT-2086 endpoint) | Pay formula min (WAT-2086 endpoint) |
 | **Max** | Forecast max | Routing max (tour cost only) |
 
-#### Average Earning (Estimated Earnings)
+#### c. Average Earning (Estimated Earnings)
 
 | Condition | Source |
-|-----------|--------|
-| Pre-routing | Historical P50 |
+| --- | --- |
+| Pre-routing, routes exist in zone-region-day | Historical P50 |
+| Pre-routing, 0 routes (no data in `route_tour_cost_stats`) | **Hidden** — not displayed |
 | After routing | Average tour cost from routing for zone |
-| Value falls outside typical range | **Hidden** — not displayed |
 
-#### Clamping Invariant
+#### d. Clamping Invariant
 
 The typical range is always clamped within the absolute range:
 
@@ -146,12 +151,12 @@ The Driver App FE reads the stored snapshot values from the ticket collection an
 
 Display logic by region config:
 
-| Condition | UI Behavior |
-|-----------|-------------|
-| Region in `enabledRegions` & data exists (count ≥ `minSampleSize`) | Show all 3 fields using zone-level data |
-| Region in `enabledRegions` & count < `minSampleSize` | Show all 3 fields using ALL_ZONE fallback data |
-| Region in `enabledRegions` but no data in DB | Fields hidden — no crash |
-| Region NOT in `enabledRegions` | Only existing min/max range shown — no new fields, no crash |
+| Condition | UI Behavior | Notes |
+| --- | --- | --- |
+| Region in `enabledRegions` & data exists (count ≥ `minSampleSize`) | Show all 3 fields using zone-level data | |
+| Region in `enabledRegions` & count < `minSampleSize` | Show all 3 fields using ALL_ZONE fallback data | No longer applies — overridden by MOB-2841 |
+| Region in `enabledRegions` but no data in DB | Fields hidden — no crash | |
+| Region NOT in `enabledRegions` | Only existing min/max range shown — no new fields, no crash | |
 
 ---
 
@@ -173,7 +178,7 @@ This means discrepancies can occur if Consul config changes or if the worker rec
 ### 4.6 Code Changes (MOB-2841)
 
 | Class / Component | Change |
-|-------------------|--------|
+| --- | --- |
 | `EarningsRangeUtils` | New — central logic for computing typical range, absolute min/max, and average earnings across pre/post-routing states |
 | `EarningsRange` | New — value object with clamping applied at construction; nulls out average earnings if outside typical range |
 | `EstimatedEarningUtils` | Deleted — replaced entirely by `EarningsRangeUtils` |
@@ -187,7 +192,7 @@ This means discrepancies can occur if Consul config changes or if the worker rec
 ### 5.1 Data Freshness
 
 - BS details group card: real-time fetch on each page load
-- Booked ticket / active screen: snapshot taken once at booking time, never updated
+- Booked ticket / active screen: snapshot taken once at booking time — overridden by MOB-2841: values change after routing completes
 - Pre-routing vs after-routing: values automatically switch once routing is confirmed (`tourCost > 0` on assignments)
 
 ### 5.2 Known Discrepancy Scenarios
@@ -214,11 +219,7 @@ When the `minSampleSize` threshold is not met pre-routing and the historical spr
 ### 5.6 Rollout Strategy
 
 | Ticket | Rollout |
-|--------|---------|
+| --- | --- |
 | MOB-2518 (calculation worker) | Global — no region restriction |
 | MOB-2517 / MOB-2541 / MOB-2693 (display) | Controlled via `enabledRegions` in Consul |
-| MOB-2841 (refinements) | Same pattern — after PROD deploy, enable for all regions |
-
----
-
-*Source: [Confluence](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2526707726/Estimated+Earnings+Typical+Driver+Earnings+Range+Documentation) · Last updated: 2026-06-29*
+| MOB-2841 (refinements) | Same pattern — after PROD deploy, enable for all regions via `["*"]` |
