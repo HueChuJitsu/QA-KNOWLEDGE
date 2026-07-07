@@ -1,8 +1,8 @@
 # DL Scan Details Storage (Check-in Flow)
 
-> Documentation for a Dataorch/Dispatch function, based on the standard `_template.md`.
+> Documentation for a Dataorch/Dispatch function.
 > Source: [MOB-2764](https://gojitsu.atlassian.net/browse/MOB-2764) — [BE] Store extracted driver license details on DL scan events (check-in flow)
-> Related: MOB-2850 (FE integration) | Service: `dataorch` | Status: Staging review Finished
+> Service: `dataorch`
 
 ## 1. Description
 
@@ -42,6 +42,10 @@ Previously only the scan event itself was recorded — the extracted field value
 - Feature is fully **additive** — an old outbound app that sends nothing behaves exactly as before (no DL row, scan event recorded, check-in never blocked).
 
 ## 3. Spec / Rules
+
+**Configuration:**
+- Config `enable_require_id_scan = true` in the `item_metadata` collection / owner = `RG_{region}` will apply for all driver types.
+- For IC drivers: just need to config `enable_require_id_scan = true` in `item_metadata` / owner = `DR_{driver_id}`.
 
 **Storage:** new Mongo collection `scan_event_dl_details`, 1:1 with the DL scan event.
 
@@ -92,6 +96,18 @@ Verify — full extraction:
     "dl_number": "D1234567",
     "expiration_date": "2030-01-01",
     "issuing_state": "CA"
+  }
+}
+```
+Verify - Manual approve by entering DL number
+
+```json
+{
+  "license": "D1234567",
+  "warehouse_id": 42,
+  "verify_only": false,
+  "dl_details": {
+    
   }
 }
 ```
