@@ -200,32 +200,33 @@ Computed on `workflow_instance_views`; the card shows a **flow rate** over the w
 | Placement → Solved median | Primary value | `d.placementToSolved.medianSeconds` | |
 | Placement → Solved avg | Grey secondary | `d.placementToSolved.avgSeconds` | |
 
-> Both legs show `—` only when the selected window's cohort is empty. Since **INB-1268** ([conductor#58](https://github.com/gojitsucom/conductor/pull/58)), dwell starts accumulating as soon as a shipment is scanned as no-route — the tile no longer waits for the shipment to be placed or resolved.
+> Both legs show `—` only when the selected window's cohort is empty. Dwell is **live while a parcel is open** — the tile starts accumulating from when the workflow is created, not when the parcel is placed or resolved.
 
-### Formula (since INB-1268)
+### Formula
 
 Per-parcel legs are **live while open, frozen once the leg closes**. Source: `conductor/crates/query/src/problem_solve/queries.rs → get_problem_solve_dwell`.
 
 | Leg | Starts | Stops (frozen) | NULL when |
 |---|---|---|---|
-| **Induct → Placement** | Shipment scanned as no-route (`COALESCE(last_inducted_at, created_at)`) | Placed into a container (`induct_to_placement_seconds` written) | Completed without ever being placed |
+| **Induct → Placement** | Workflow created at FINAL sort scan (`COALESCE(last_inducted_at, created_at)`) | Placed into a container (`induct_to_placement_seconds` written) | Completed without ever being placed |
 | **Placement → Solved** | Placed into a container (`placed_at`) | Workflow resolved (`placement_to_solved_seconds` written) | Never placed |
 
-- `last_inducted_at` = **latest** induct timestamp (re-inductions reset it); falls back to `created_at` if not yet set. `placed_at` = `collect_to_container` task completes.
+- `created_at` = timestamp of the **FINAL sort scan** (`evidence.sort_type == "FINAL"`) — the moment the no-route workflow is created (INB-1310). A PRESORT scan with `NO_ROUTE` status does not create a workflow and is not captured.
+- `last_inducted_at` = **latest** `ShipmentInductedToSort` timestamp (re-inductions reset it); falls back to `created_at` if not yet received.
+- `placed_at` = written when `collect_to_container` task completes (`ShipmentPlacedInContainer`).
 - **Cohort:** `(is_terminal = FALSE AND created_at in window) OR (is_terminal = TRUE AND current_state = 'completed' AND completed_at in window)`. Aborted / dismissed / failed excluded — same predicate as INB-1241 ([Section 2](#section-2--completion-rate)).
 - **median** = `percentile_cont(0.5)`, **avg** = `AVG`, over non-NULL leg values.
 - **Refresh:** the page polls every 5 min automatically; use the Refresh button for an immediate update.
 
 > ⚠️ **Deliberate limitation — open parcels are window-bounded by `created_at`.** A parcel that entered Problem Solve *before* the selected window is excluded even if it's still open and aging. A 7d window measures only recent inflow, not the long-tail stuck backlog.
 
-**QA checks (verified on staging, INB-1268):**
-- [ ] Scan a shipment as no-route (induct only, not yet placed) → **Induct → Placement** shows a non-zero, growing value immediately — not `—`.
+> **Pending — INB-1268:** Intended to change the dwell start time from FINAL sort scan to the **first** no-route scan (any sort stage), by removing the FINAL gate and anchoring `created_at` to the earliest no-route detection. Currently blocked because INB-1310 re-instated the FINAL gate (merged July 7, 2026). Once resolved, dwell will accumulate from the moment the shipment is first detected as no-route rather than from the final sort confirmation.
+
+**QA checks:**
+- [ ] Scan a shipment as no-route at FINAL sort → **Induct → Placement** shows a non-zero, growing value — not `—`.
 - [ ] Place that shipment into a no-route container → **Induct → Placement** freezes (value stops growing); **Placement → Solved** starts counting.
 - [ ] Resolve the shipment → **Placement → Solved** freezes at the final value.
-
-### Pre-INB-1268 behavior (superseded)
-
-Before the fix, cohort was **completed-only** (`is_terminal = TRUE AND completed_at in window`). Open parcels contributed nothing — a shipment sitting in Problem Solve for hours showed no dwell at all until it was audited onto a route. Both legs were computed purely from stored timestamps (`placed_at − last_inducted_at` and `completed_at − placed_at`) with no live accumulation.
+- [ ] Abort/dismiss the shipment → it must **not** contribute to either dwell leg.
 
 ---
 
@@ -502,7 +503,7 @@ python3 -c "d=open('/tmp/body.bin','rb').read();print(''.join(chr(b) if 32<=b<12
 - [ ] Abort/dismiss/fail an open workflow → `resolved` and `ratePct` must **not** increase (Open count drops by 1 only).
 - [ ] Missing parcel (`collection_overdue`): must be **placed into a no-route container** to clear — re-scanning at conveyor does not clear it.
 - [ ] Missing parcel (`locate_package`): **any induction scan** clears Missing.
-- [ ] Dwell tile (INB-1268): scan a shipment into Problem Solve → Induct→Placement dwell shows a non-zero value immediately and grows on refresh (not `—` until placed/solved). Place it → Induct→Placement freezes, Placement→Solved starts live. Abort/dismiss it → it must **not** contribute to either dwell leg.
+- [ ] Dwell tile: scan a shipment into Problem Solve at FINAL sort → Induct→Placement dwell shows a non-zero value and grows on refresh (not `—`). Place it → Induct→Placement freezes, Placement→Solved starts live. Abort/dismiss it → it must **not** contribute to either dwell leg.
 
 **Things to watch**
 - [ ] Counts on the board match the actual workflow tasks (no double-count when a task transitions).
