@@ -1,9 +1,8 @@
 # POD Package Label Masking (Global On/Off Flag)
 
 > Documentation for a Driver App / POD Analyzer function, based on the standard `_template.md`.
-> Source: [MOB-2996](https://gojitsu.atlassian.net/browse/MOB-2996) — [Pending Release] Allow on/off package masking feature in the AI detection model
-> Related: [MOB-2966](https://gojitsu.atlassian.net/browse/MOB-2966) (dev ticket, Done Pending Release) | [MOB-2806](https://gojitsu.atlassian.net/browse/MOB-2806) / [MOB-2788](https://gojitsu.atlassian.net/browse/MOB-2788) (POD | Address model masking & Threshold)
-> Component: POD Analyzer | Status: Code Review (pending release)
+> Source: [MOB-2996](https://gojitsu.atlassian.net/browse/MOB-2996) — [Pending Release] Allow on/off package masking feature in the AI detection model|[MOB-2966](https://gojitsu.atlassian.net/browse/MOB-2966) (dev ticket, Done Pending Release) | [MOB-2806](https://gojitsu.atlassian.net/browse/MOB-2806) / [MOB-2788](https://gojitsu.atlassian.net/browse/MOB-2788) (POD | Address model masking & Threshold)
+> Component: POD Analyzer
 
 ## 1. Description
 
