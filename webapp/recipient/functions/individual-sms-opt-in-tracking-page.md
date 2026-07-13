@@ -100,6 +100,12 @@ visible       = enable_recipient_sms_opt_in == "true"
 call checkbox  = visible && enable_recipient_call_opt_in == "true"
 ```
 
+### ZIP code masking in "Deliver to:" (privacy)
+
+**New behavior (shipped with this feature):** the **zipcode** in the **Deliver to:** section is only
+displayed **after the recipient has been authenticated** (identity verified). Before verification the
+ZIP is hidden/masked, so it cannot be used to guess the `zip` verification value.
+
 ### Identity verification (`verify` endpoint)
 
 - Matches input against `sms_opt_in_verification_field` via `ShipmentFieldMatcher.matchesTrimmedIgnoreCase`.
@@ -158,6 +164,60 @@ dedupe lock (5-min TTL).
 `ineligible=true` ⇒ driver QUIT/SUSPENDED block (auto-removed on reactivation); `false` ⇒ user-initiated.
 Carrier-level (Twilio/Bandwidth) STOP also requires texting START to truly re-enable — clearing the DB
 record alone is not enough.
+
+## Shipment Detail Log
+
+After a recipient updates the opt-in phone, a log is written and shown in the **shipment detail**
+activity feed in the form:
+
+```text
+Application [recipient] sms-opt-in Shipment [shipment_id]
+```
+
+Log content (`SHIPMENT.MODIFIER.sms-opt-in` event):
+
+```json
+{
+  "id": "",
+  "category": "SHIPMENT",
+  "type": "MODIFIER",
+  "action": "sms-opt-in",
+  "ts": "{ts time when update the opt-in}",
+  "source": {
+    "attributes": {
+      "version": "1.0.23"
+    },
+    "uid": "AP_recipient"
+  },
+  "object": {
+    "uid": "SH_{shipment_id}"
+  },
+  "subject": {
+    "uid": "AP_recipient"
+  },
+  "state": {
+    "call_opt_in": "true/false",
+    "has_phone": "true/false",
+    "sms_opt_in": "true/false",
+    "was_unsubscribed": "true/false"
+  },
+  "ephemeral": false
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `action` | Always `sms-opt-in` |
+| `ts` | Timestamp when the opt-in was updated |
+| `object.uid` | `SH_` + `shipment_id` |
+| `source.uid` / `subject.uid` | `AP_recipient` (event originates from the recipient app) |
+| `state.call_opt_in` | Voice-call consent flag at update time |
+| `state.has_phone` | Whether an opt-in phone is present |
+| `state.sms_opt_in` | SMS consent flag at update time |
+| `state.was_unsubscribed` | Whether the phone was previously unsubscribed |
+
+This is the same `SHIPMENT.MODIFIER.sms-opt-in` event that `SMSOptInWelcomeHandler` subscribes to
+(see [First-contact welcome](#first-contact-welcome-smsoptinwelcomehandler)).
 
 ## SMS Send Pipelines
 
@@ -242,6 +302,8 @@ processes it as a real inbound SMS and updates the `unsubscribers` collection.
 | `enforced_sms_enabled = true` | Section hidden |
 | Shipment delivered | Section not shown |
 | `enable_recipient_sms_opt_in = false` (client override) | Section hidden |
+| ZIP in **Deliver to:** before recipient is authenticated | Zipcode hidden/masked |
+| ZIP in **Deliver to:** after recipient is authenticated | Zipcode displayed |
 
 ### Phone validation
 
@@ -275,3 +337,34 @@ processes it as a real inbound SMS and updates the `unsubscribers` collection.
 | --- | --- |
 | Opt-in with previously unsubscribed phone | *You're signed up...* + resubscribe hint; `was_unsubscribed: true`; no CTIA welcome |
 | Opt-in Call only (no SMS) | `CTIA_REPLY_START` NOT sent |
+
+### SMS types routed to the opt-in phone
+
+Once a recipient has opted in, **all** recipient-notification SMS prefer the opt-in phone over the
+manifest phone (`SMSComposer.resolveRecipientPhone`). Each of the following is sent to the opt-in phone:
+
+| Test case | Expectation |
+| --- | --- |
+| `INFORM_RECIPIENT_PICKUP_SUCCEEDED` sent when pickup succeeds | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_PICKUP_SUCCEEDED_SIGNATURE_REQUIRED` sent when pickup succeeds and `signatureRequired=true` | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_PICKUP_FAILED` sent when pickup fails | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_PICKUP_REMINDER` sent when the pickup reminder fires | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_SUCCEEDED` sent when delivery completes | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_SUCCEEDED_REASON` sent when delivery completes with a reason (left at door) | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_COMING_SOON` sent when driver is arriving soon | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_ABOUT_DELIVERY_POD` sent when POD/delivery info is shared | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_TRACKING_LINK` sent when a dispatcher sends the tracking link | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_FEEDBACK_REQUEST` sent after delivery | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED` sent when delivery fails (generic) | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_REASON` sent when delivery fails with a configured reason | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_UNRECOVERABLE` sent when delivery fails unrecoverably | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_NO_ACCESS_CODE` sent when delivery fails due to no access code | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_WRONG_ACCESS_CODE` sent when delivery fails due to wrong access code | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_ACCESS_BLOCKED` sent when delivery fails due to access blocked | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_ADDRESS_INVALID` sent when delivery fails due to invalid address | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_COMMUNICATION_ISSUE` sent when delivery fails due to a communication issue | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_ACCESS_DENIED_BY_DOORMAN` sent when delivery fails due to doorman denial | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_DROPOFF_FAILED_BUSINESS_CLOSED` sent when delivery fails due to business closed | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_SIGNATURE_TOKEN_SMS` sent when a signature link is requested | Sent to the opt-in phone |
+| `INFORM_RECIPIENT_ID_SCAN_SMS` sent when an ID-scan link is requested | Sent to the opt-in phone |
+| `CTIA_REPLY_START` sent on first-contact opt-in | Sent to the opt-in phone; **NOT** re-sent for re-subscribers |
