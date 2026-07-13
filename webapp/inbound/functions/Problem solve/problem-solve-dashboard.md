@@ -200,22 +200,33 @@ Computed on `workflow_instance_views`; the card shows a **flow rate** over the w
 | Placement → Solved median | Primary value | `d.placementToSolved.medianSeconds` | |
 | Placement → Solved avg | Grey secondary | `d.placementToSolved.avgSeconds` | |
 
-> Both legs show `—` when the selected window has no resolved parcels (all fields return 0).
+> Both legs show `—` only when the selected window's cohort is empty. Dwell is **live while a parcel is open** — the tile starts accumulating from when the workflow is created, not when the parcel is placed or resolved.
 
 ### Formula
 
-Per-parcel legs stored on `workflow_instance_views`; the card shows median/avg **across all resolved parcels in the window** (not one shipment). Source: `conductor/crates/query/src/{workflow_instance/projector.rs, problem_solve/queries.rs}`.
+Per-parcel legs are **live while open, frozen once the leg closes**. Source: `conductor/crates/query/src/problem_solve/queries.rs → get_problem_solve_dwell`.
 
-| Leg | Per-parcel formula |
-|---|---|
-| **Induct → Placement** | `placed_at − last_inducted_at` |
-| **Placement → Solved** | `completed_at − placed_at` |
+| Leg | Starts | Stops (frozen) | NULL when |
+|---|---|---|---|
+| **Induct → Placement** | Workflow created at FINAL sort scan (`COALESCE(last_inducted_at, created_at)`) | Placed into a container (`induct_to_placement_seconds` written) | Completed without ever being placed |
+| **Placement → Solved** | Placed into a container (`placed_at`) | Workflow resolved (`placement_to_solved_seconds` written) | Never placed |
 
-- `last_inducted_at` = **latest** induct (re-inductions reset it). `placed_at` = `collect_to_container` completes. `completed_at` = workflow terminal (e.g. `ShipmentSortedToPosition`).
-- **Cohort** = `is_terminal = TRUE` AND `completed_at` within window (+ facility/type filter). In-progress parcels are excluded from both legs. `Placement → Solved` is `NULL` if the parcel resolved without a placement.
-- **median** = `percentile_cont(0.5)`, **avg** = `AVG`, over non-NULL values. With 2 values they're equal (midpoint); diverge at ≥3.
+- `created_at` = timestamp of the **FINAL sort scan** (`evidence.sort_type == "FINAL"`) — the moment the no-route workflow is created (INB-1310). A PRESORT scan with `NO_ROUTE` status does not create a workflow and is not captured.
+- `last_inducted_at` = **latest** `ShipmentInductedToSort` timestamp (re-inductions reset it); falls back to `created_at` if not yet received.
+- `placed_at` = written when `collect_to_container` task completes (`ShipmentPlacedInContainer`).
+- **Cohort:** `(is_terminal = FALSE AND created_at in window) OR (is_terminal = TRUE AND current_state = 'completed' AND completed_at in window)`. Aborted / dismissed / failed excluded — same predicate as INB-1241 ([Section 2](#section-2--completion-rate)).
+- **median** = `percentile_cont(0.5)`, **avg** = `AVG`, over non-NULL leg values.
+- **Refresh:** the page polls every 5 min automatically; use the Refresh button for an immediate update.
 
-**Example** — cohort `[SH_70439296, SH_70439294]`: Induct→Placement `[5m41, 7m31]` → median/avg **6m36**; Placement→Solved `[7m37, 19m34]` → median/avg **13m36**. (With only `SH_70439296` resolved the card read 5m41 / 7m37 — the value shifts as parcels resolve.)
+> ⚠️ **Deliberate limitation — open parcels are window-bounded by `created_at`.** A parcel that entered Problem Solve *before* the selected window is excluded even if it's still open and aging. A 7d window measures only recent inflow, not the long-tail stuck backlog.
+
+> **Pending — INB-1268:** Intended to change the dwell start time from FINAL sort scan to the **first** no-route scan (any sort stage), by removing the FINAL gate and anchoring `created_at` to the earliest no-route detection. Currently blocked because INB-1310 re-instated the FINAL gate (merged July 7, 2026). Once resolved, dwell will accumulate from the moment the shipment is first detected as no-route rather than from the final sort confirmation.
+
+**QA checks:**
+- [ ] Scan a shipment as no-route at FINAL sort → **Induct → Placement** shows a non-zero, growing value — not `—`.
+- [ ] Place that shipment into a no-route container → **Induct → Placement** freezes (value stops growing); **Placement → Solved** starts counting.
+- [ ] Resolve the shipment → **Placement → Solved** freezes at the final value.
+- [ ] Abort/dismiss the shipment → it must **not** contribute to either dwell leg.
 
 ---
 
@@ -281,7 +292,7 @@ Status is **derived** by the backend from the workflow's terminal flag, phase, a
 
 **Derivation rule order** (earlier rule wins):
 1. `is_terminal = true` → **Resolved**
-2. `locate_package` task active → **Missing**
+2. `locate_package` OR `collection_overdue` task active → **Missing**
 3. `routing_obligation` task completed (`routing_resolved = true`) → **In progress**
 4. Phase = `no_route_detected` + `collect_to_container` active → **New**
 5. Phase = `no_route_detected` + collection done → **Placed**
@@ -293,58 +304,51 @@ Status is **derived** by the backend from the workflow's terminal flag, phase, a
 | `NEW` | New | No-route detected; not yet collected onto a problem-solve container | `ShipmentNoRouteDetected` (from `SHIPMENT.INBOUND.scan` where `fact.status = "NO_ROUTE"`) **or** `ShipmentUnRouted` (route removed) | Phase = `no_route_detected`, `collect_to_container` task active, routing not yet resolved |
 | `PLACED` | Placed | On a problem-solve container, parked — no active task | **Path A:** `STS.SESSION_SHIPMENT_SERVICE.move-shipment-to-container` where `fact.purposes` contains `"no_route"` (container id from `state.container_id`)<br>**Path B:** `STS.SHIPMENT.scan-shipment-for-container` where `fact.purposes` contains `"no_route"` (container id from `ref.uid`, `CNS_` prefix stripped)<br>→ both translate to `ShipmentPlacedInContainer`, completing `collect_to_container` task | Phase = `no_route_detected`, collection done, `routing_obligation` still pending |
 | `IN_PROGRESS` | In progress | A re-sort or store task is actively running | **Path A:** `ShipmentRouted` (from `SHIPMENT.PLANNING.add-redelivery` or `SHIPMENT.PLANNING.sprinkle`) — completes `routing_obligation` task<br>**Path B:** Both `collect_to_container` + `routing_obligation` complete → `sort_to_position` spawned, phase advances to `awaiting_re_sort` | `routing_resolved = true`, or phase past `no_route_detected` |
-| `MISSING` | Missing | `collection_overdue` **or** `locate_package` task is live — a checkpoint timer expired, action required | **Reason A — collection overdue (30 min):** no-route detected → 30-min countdown starts; parcel NOT placed onto a problem-solve container in time → `collection_overdue` spawns. Cancelled if the parcel is placed first.<br>**Reason B — re-induction overdue (20 min):** `ContainerCommittedToSortInduction` arrives → 20-min countdown anchored to `committed_at`; parcel NOT inducted to sort in time → `locate_package` spawns. Cancelled if `ShipmentInductedToSort` arrives first.<br>See "Missing-detection logic" below for the full two-timer model. | `collection_overdue` or `locate_package` task active; overrides all non-terminal states |
+| `MISSING` | Missing | Either overdue marker is active — action required | **Collection overdue:** `ShipmentNoRouteDetected` starts 30-min clock; not placed in container in time → `collection_overdue` spawns.<br>**Re-induction overdue:** `ContainerCommittedToSortInduction` starts 20-min clock; not inducted to sort in time → `locate_package` spawns. See "Missing-detection logic" below. | `locate_package` OR `collection_overdue` task active; overrides all non-terminal states |
 | `RESOLVED` | Resolved | Workflow is terminal — problem solve closed | **Path A:** `ShipmentSortedToPosition` — completes `sort_to_position` task, phase = `sorted`, workflow terminal<br>**Path B:** `TriggerManualAction(RTS)` — phase = `rts_exit`, workflow terminal<br>**Path C:** `WorkflowInstanceAborted` — force-aborted via admin RPC | `is_terminal = true` |
 
 > `new` parcels are not broken out as a tile in the Open Problem Solves hero card. Derive the count as: `totalOpen − missing − inProgress − placed`.
 
 #### Missing-detection logic
 
-A parcel becomes **Missing** when it fails to reach an expected checkpoint within a time window. There are **two independent timers**, each guarding a different stage of the no-route flow. Both flip the parcel to **Missing**, but for different reasons (surfaced in the Missing dialog). The workflow cancels one before arming the other, so in practice only one is active at a time.
+A parcel becomes **Missing** when it misses a time-bound checkpoint. There are **two timers**:
 
 | Timer | Window | Starts when | Becomes Missing if | Marker task |
 |---|---|---|---|---|
-| **Collection overdue** | **30 min** | No-route is detected (workflow created) | Parcel is **not placed onto a problem-solve container** within 30 min | `collection_overdue` |
-| **Re-induction overdue** | **20 min** | Container holding the parcel is committed to sort induction (`CommitContainerToSortInduction`) | Parcel is **not inducted to sort** within 20 min (anchored to the event's `committed_at`) | `locate_package` |
+| **Collection overdue** | **30 min** | Shipment scanned as no-route (`ShipmentNoRouteDetected`) | Not placed into a no-route container within 30 min | `collection_overdue` |
+| **Re-induction overdue** | **20 min** | Container committed to sort induction (`CommitContainerToSortInduction`) | Not inducted to sort within 20 min (anchored to `committed_at`) | `locate_package` |
 
-**Stage 1 — Collection overdue (30 min):**
-When a parcel is detected as no-route, a 30-min clock starts. The parcel is expected to be collected/placed onto a problem-solve container within that time.
-- Placed in time → clock cancelled, no `collection_overdue`, status goes **Placed**.
-- Not placed in 30 min → `collection_overdue` spawns → status = **Missing** (reason: *not collected within the window*).
+> **INB-1286:** The `COLLECTION_OVERDUE_MISSING_ENABLED` env flag (default `false`) controls whether `collection_overdue` is counted in the **summary card's Missing count** (SQL). When the flag is off, the summary excludes collection-overdue parcels from the Missing chip. The per-row status (`derive_status()`) **always** treats both markers as Missing regardless of the flag — so a parcel with `collection_overdue` active shows as **Missing** on its row even when the summary count is suppressed.
 
-**Stage 2 — Re-induction overdue (20 min):**
-After the parcel is on a container and that container is committed to sort induction, a 20-min clock starts. The parcel is expected to show up at sort induction within that time.
+**Collection overdue (30 min):**
+From the moment a shipment is scanned as no-route, a 30-min window opens for a worker to scan it into a no-route container.
+- Placed in container in time → `collection_overdue` never spawns.
+- Not placed within 30 min → `collection_overdue` spawns → status = **Missing**.
+
+**Re-induction overdue (20 min):**
+After the parcel is on a container and that container is committed to sort induction, a 20-min clock starts.
 - Inducted in time → clock cancelled (`sort_to_position` spawns), no `locate_package`.
-- Not inducted in 20 min → `locate_package` spawns → status = **Missing** (reason: *not re-inducted after commit*).
+- Not inducted in 20 min → `locate_package` spawns → status = **Missing**.
 
 **QA takeaways:**
-- Two ways a parcel goes Missing: **never placed** (30 min after no-route detected) or **placed but never inducted** (20 min after the container is committed).
-- Committing a container does **not** by itself make a parcel Missing — it only starts the 20-min clock.
+- A parcel goes Missing via **either** overdue marker — collection-not-collected (30 min from no-route scan) OR placed-but-never-inducted (20 min from container commit).
 - Each window is anchored to the triggering event's timestamp, not to when the system processes it — processing lag does not extend the window.
 - Expect a small lag (~seconds) between a deadline and the status flipping, because the countdowns are checked in batches — not a bug.
-- On re-induction the collection clock re-arms for a fresh cycle.
 
-#### How to resolve a Missing parcel (two flows behave differently)
+#### How to resolve a Missing parcel
 
-**This is the #1 QA gotcha:** the action that clears Missing depends on *which marker* fired. A plain re-induction scan clears one flow but **not** the other. Always check the Missing reason first (collection-overdue vs re-induction-overdue).
-
-| Missing reason | Marker | What CLEARS it | What does NOT clear it |
-|---|---|---|---|
-| **Collection overdue** (never placed in 30 min) | `collection_overdue` | **Place the parcel onto a problem-solve container** (`ShipmentPlacedInContainer`), **or** sort it to position (`ShipmentSortedToPosition` → Resolved), **or** pull it **off a pallet** and re-induct (`ShipmentInductedToSort` with `induction_context = "from_pallet"`) | A normal induction scan (`induction_context = "first"`). Scanning the parcel again at the conveyor does **nothing** — induction ≠ collection. |
-| **Re-induction overdue** (placed, not inducted in 20 min) | `locate_package` | **Any induction scan** (`ShipmentInductedToSort`, *either* `first` *or* `from_pallet`) — the workflow cancels `locate_package` at the top of the induction handler regardless of context | — (induction always clears it) |
-
-**Why the difference:**
-- `locate_package` means *"the parcel was committed to induction but never showed up at sort"*. The moment it **is** inducted (`ShipmentInductedToSort`, any context), it has physically shown up → marker cancelled → parcel re-derives to its normal status (usually **In progress** if already routed, else New/Placed).
-- `collection_overdue` means *"the parcel was never picked up onto a problem-solve cart"*. Scanning it at the induction conveyor does not pick it up onto a cart, so the marker stays. It only clears when the parcel is genuinely **placed into a container**, **sorted** to its final position, or **re-collected off a pallet**.
+| Marker | What CLEARS it |
+|---|---|
+| `collection_overdue` | **Scan into a no-route container** (`ShipmentPlacedInContainer`) — completes `collect_to_container`, cancels `collection_overdue` |
+| `locate_package` | **Any induction scan** (`ShipmentInductedToSort`, either `first` or `from_pallet`) — cancels `locate_package` at the top of the induction handler regardless of context |
 
 **Resolution steps for QA:**
 
-| Goal | Collection-overdue Missing | Re-induction-overdue Missing |
-|---|---|---|
-| Back to **In progress / Placed** | Scan the parcel **into a no-route container** (move-shipment-to-container with `fact.purposes = ["no_route"]`) → `collection_overdue` cleared | Scan the parcel at **sort induction** (any induction scan) → `locate_package` cleared |
-| Straight to **Resolved** | Sort the parcel to its final position with the slot confirmed (`scan-audit` with `state.audited = "true"`, or `put-to-bin`, or `confirm-sort-slot`) → `ShipmentSortedToPosition` | same |
-
-> ⚠️ **Common false report:** "I re-scanned the Missing parcel but it's still Missing." This is expected when the Missing reason is **collection overdue** and the scan was an ordinary induction scan (`first`). Induction does not equal collection. To clear it, the parcel must be **placed into a container** (or sorted). Verify the `fact.purposes` on the placement event is an **array** (`["no_route"]`) — if it arrives as a bare string, the translator drops it, `ShipmentPlacedInContainer` is never emitted, and `collection_overdue` never clears.
+| Goal | Action |
+|---|---|
+| Clear `collection_overdue` | Scan the parcel into a no-route container → **New** or **Placed** |
+| Clear `locate_package` | Scan the parcel at **sort induction** (any induction scan) → **In progress** or **Placed** |
+| Straight to **Resolved** | Sort the parcel to its final position (`scan-audit` with `state.audited = "true"`, or `put-to-bin`, or `confirm-sort-slot`) → `ShipmentSortedToPosition` |
 
 #### Geocode Failed workflow
 
@@ -497,8 +501,9 @@ python3 -c "d=open('/tmp/body.bin','rb').read();print(''.join(chr(b) if 32<=b<12
 - [ ] **Route reversal** of a re-sorted shipment → workflow re-opens, shipment reappears as **Route Reversed** with a collection task.
 - [ ] **Misplaced**: pallet consumed expecting N scans but fewer arrive → missing shipment flagged as **Misplaced** with an alert; once re-scanned, flag clears.
 - [ ] Abort/dismiss/fail an open workflow → `resolved` and `ratePct` must **not** increase (Open count drops by 1 only).
-- [ ] Missing parcel (collection-overdue): re-scanning at conveyor does **not** clear Missing — must be placed into a no-route container.
-- [ ] Missing parcel (re-induction-overdue): any induction scan clears Missing.
+- [ ] Missing parcel (`collection_overdue`): must be **placed into a no-route container** to clear — re-scanning at conveyor does not clear it.
+- [ ] Missing parcel (`locate_package`): **any induction scan** clears Missing.
+- [ ] Dwell tile: scan a shipment into Problem Solve at FINAL sort → Induct→Placement dwell shows a non-zero value and grows on refresh (not `—`). Place it → Induct→Placement freezes, Placement→Solved starts live. Abort/dismiss it → it must **not** contribute to either dwell leg.
 
 **Things to watch**
 - [ ] Counts on the board match the actual workflow tasks (no double-count when a task transitions).
