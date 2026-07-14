@@ -26,6 +26,7 @@
   - [Feature Flags](#feature-flags)
   - [Camera & Image Quality](#camera--image-quality)
   - [Masking (Privacy Blurring)](#masking-privacy-blurring)
+  - [Package Label Masking (Global Flag)](#package-label-masking-global-flag)
   - [Validation & AI Rules](#validation--ai-rules)
   - [Enforcement Policy (per assignment/stop)](#enforcement-policy-per-assignmentstop)
   - [Upload & Storage](#upload--storage)
@@ -429,6 +430,30 @@ How it works:
 | `pod_mask_color` | `#B4AAA0` | Hex colour used for the mask overlay. |
 | `mask_threshold` | `0.2` | Confidence threshold for the mask detection model (0.0–1.0). |
 | `send_original_image_enabled` | `true` | When `true`, both the original and masked images are uploaded. |
+
+### Package Label Masking (Global Flag)
+
+Applies package label masking **before** the OCR detection step in the on-device AI detection model — separate from the privacy masking above, this masks/obscures the package **label** region specifically so that OCR only sees the masked image. Gated by a global flag so it can be enabled/disabled without an app release.
+
+Source: [MOB-2996](https://gojitsu.atlassian.net/browse/MOB-2996) — Allow on/off package masking feature in the AI detection model | [MOB-2966](https://gojitsu.atlassian.net/browse/MOB-2966) (dev ticket) | [MOB-2806](https://gojitsu.atlassian.net/browse/MOB-2806) / [MOB-2788](https://gojitsu.atlassian.net/browse/MOB-2788) (masking & threshold)
+
+| Config Key | Location | Default | Description |
+|---|---|---|---|
+| `enable_package_masking` | Consul `mobile_app_config` | `true` | Global on/off for package label masking before OCR detection. Config is global, not per-assignment/client. |
+
+**Behaviour:**
+
+- **Enabled (`true`, default):** masking is applied to the image/frame before OCR detection, consistently on Android and iOS (masking → OCR detection → downstream model/threshold handling). OCR results with `detection_confidence` (in `ocr_rec.result`) > 0.7 are recorded in the `photo_analyzed` event. If the model returns an empty string, the condition is marked failed.
+- **Disabled (`false`):** the masking step is skipped entirely — the raw image/frame goes directly into OCR detection. All downstream behaviour (thresholds, rule analysis, enforcement, upload) is unchanged.
+- The flag only gates the masking step — photo capture, validation flow, and stop completion are never blocked by its value.
+
+**QA notes:**
+
+- Toggle `enable_package_masking` on Consul `mobile_app_config` and confirm behaviour switches globally without an app release (restart app / refresh config as required).
+- `true` → take a POD photo with a shipment label visible → masking applied before OCR; masked image visible in the `photo_analyzed` event / uploaded photos.
+- `false` → same photo → no masking applied; OCR runs on the raw image; downstream validation still works.
+- Flag off must NOT affect photo capture, soft/hard block enforcement, photo upload, or stop completion.
+- Check `pod_reviews` in MongoDB and the `photo_analyzed` event (Dispatch route view) to verify condition status/confidence.
 
 ### Validation & AI Rules
 
