@@ -450,7 +450,7 @@ Applies package label masking **before** the OCR detection step in the on-device
   bool get enablePackageMasking {
     return getBool("enable_package_masking", defaultValue: false);
   }
-- Set up the flag on Region, Warehouse, Driver level: using endpoint `/metadata/{{RG/WH/DR_id}}/APP_CONFIG/enable_package_masking`
+- Set up the flag at Region, Warehouse, Driver level: using endpoint `/metadata/{{RG/WH/DR_id}}/APP_CONFIG/enable_package_masking`
   ```json
   {
       "type": "java.lang.Boolean",
