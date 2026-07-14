@@ -26,7 +26,7 @@
   - [Feature Flags](#feature-flags)
   - [Camera & Image Quality](#camera--image-quality)
   - [Masking (Privacy Blurring)](#masking-privacy-blurring)
-  - [Package Label Masking (Global Flag)](#package-label-masking-global-flag)
+  - [Package Label Masking](#package-label-masking)
   - [Validation & AI Rules](#validation--ai-rules)
   - [Enforcement Policy (per assignment/stop)](#enforcement-policy-per-assignmentstop)
   - [Upload & Storage](#upload--storage)
@@ -431,14 +431,14 @@ How it works:
 | `mask_threshold` | `0.2` | Confidence threshold for the mask detection model (0.0–1.0). |
 | `send_original_image_enabled` | `true` | When `true`, both the original and masked images are uploaded. |
 
-### Package Label Masking (Global Flag)
+### Package Label Masking 
 
 Applies package label masking **before** the OCR detection step in the on-device AI detection model — separate from the privacy masking above, this masks/obscures the package **label** region specifically so that OCR only sees the masked image. Gated by a global flag so it can be enabled/disabled without an app release.
 
 
 | Config Key | Location | Default | Description |
 |---|---|---|---|
-| `enable_package_masking` | Consul `mobile_app_config` | `true` | Global on/off for package label masking before OCR detection. Config is global, not per-assignment/client. |
+| `enable_package_masking` | Consul `mobile_app_config` | `true` | Can be overridden per region, warehouse, or client via the `item_metadata` collection. |
 
 **Behaviour:**
 
