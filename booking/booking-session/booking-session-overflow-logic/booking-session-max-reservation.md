@@ -6,7 +6,7 @@ Related docs:
 
 - [ENG-964919303](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/964919303)
 - [Driver probation check in Ticket booking session](driver-probation-check-in-ticket-booking-session.md)
-- [Booking model configuration](driver-match-intelligent-booking-session/booking-model-configuration.md)
+- [Booking model configuration](../booking-session/driver-match-intelligent-booking-session/booking-model-configuration.md)
 
 Booking session max reservation is based on `booking_session_template.reservation`.
 

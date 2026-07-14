@@ -9,13 +9,13 @@ Related documents:
 - [ENG-738689025](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/738689025)
 - [ENG-647823383](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/647823383)
 - [ENG-647692354](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/647692354)
-- New Pickup session flow → [Dynamic Pickup ETA: Configuration](new-pickup-session-flow/dynamic-pickup-eta-configuration.md)
+- New Pickup session flow → [Dynamic Pickup ETA: Configuration](../new-pickup-session-flow/dynamic-pickup-eta-configuration.md)
 
 ## Notes
 
 - Pickup eta (pickup slot) is the time slot that a driver intends to come to pickup their shipments → this helps Outbound staff to prepare shipments better when drivers come.
 - **Ticket booking tutorial logic:** default 6 pickup eta slots, each slot lasts 30 mins. Start time of the list of ETA slots is the time the shipment is scanned to create the ticket booking tutorial. Date of the ETA slot is the date the tutorial is created. Timezone is the timezone of the driver region (from the latest assignment).
-- **Where to set up pickup slot for Real Ticket Booking:** Dashboard → Warehouse (**Outdated** — refer to [Dynamic Pickup ETA: Configuration](new-pickup-session-flow/dynamic-pickup-eta-configuration.md)).
+- **Where to set up pickup slot for Real Ticket Booking:** Dashboard → Warehouse (**Outdated** — refer to [Dynamic Pickup ETA: Configuration](../new-pickup-session-flow/dynamic-pickup-eta-configuration.md)).
   - **Quantity per Pickup Slot:** for each pickup slot, how many drivers can come. A pickup slot here is for each ticket book → for 2 different ticket books, max 4 drivers can select pickup slot 3:00–3:30 (based on example data).
   - **Pickup Time Gap:** if pickup time gap = 2 → if a Driver selects a pickup slot, that slot is disabled along with the 2 pickup slots above and below.
   - **Time per Pickup Slot:** how long a pickup slot lasts.
