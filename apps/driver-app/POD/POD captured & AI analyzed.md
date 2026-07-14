@@ -438,13 +438,27 @@ Applies package label masking **before** the OCR detection step in the on-device
 
 | Config Key | Location | Default | Description |
 |---|---|---|---|
-| `enable_package_masking` | Consul `mobile_app_config` | `true` | Can be overridden per region, warehouse, or client via the `item_metadata` collection. |
+| `enable_package_masking` | Consul `mobile_app_config` | `true` | Can be overridden per region, warehouse, driver via the `item_metadata` collection  or client via `client_setting`. |
+
 
 **Behaviour:**
 
 - **Enabled (`true`, default):** masking is applied to the image/frame before OCR detection, consistently on Android and iOS (masking → OCR detection → downstream model/threshold handling). OCR results with `detection_confidence` (in `ocr_rec.result`) > 0.7 are recorded in the `photo_analyzed` event. If the model returns an empty string, the condition is marked failed.
 - **Disabled (`false`):** the masking step is skipped entirely — the raw image/frame goes directly into OCR detection. All downstream behaviour (thresholds, rule analysis, enforcement, upload) is unchanged.
 - The flag only gates the masking step — photo capture, validation flow, and stop completion are never blocked by its value.
+- If the flag hasn't been set up, the default value is false. The masking package label will turn off in default. 
+  bool get enablePackageMasking {
+    return getBool("enable_package_masking", defaultValue: false);
+  }
+- Set up the flag on Region, Warehouse, Driver level: using endpoint `/metadata/{{RG/WH/DR_id}}/APP_CONFIG/enable_package_masking`
+  ```json
+  {
+      "type": "java.lang.Boolean",
+      "value": "true"
+  }
+  ```
+- Set up the flag on Client level: Add the flag in Delivery Setting
+      "enable_package_masking": "true"
 
 
 ### Validation & AI Rules
