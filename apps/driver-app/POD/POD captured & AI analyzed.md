@@ -438,27 +438,32 @@ Applies package label masking **before** the OCR detection step in the on-device
 
 | Config Key | Location | Default | Description |
 |---|---|---|---|
-| `enable_package_masking` | Consul `mobile_app_config` | `true` | Can be overridden per region, warehouse, driver via the `item_metadata` collection  or client via `client_setting`. |
+| `enable_package_masking` | Consul `mobile_app_config` | `false` (code fallback; Consul currently sets `true` in staging & prod) | Can be overridden per driver, warehouse, or region via `item_metadata` (scope `APP_CONFIG`). Priority: driver > warehouse > region > global. **Client-level override is NOT supported.** |
 
 
 **Behaviour:**
 
-- **Enabled (`true`, default):** masking is applied to the image/frame before OCR detection, consistently on Android and iOS (masking → OCR detection → downstream model/threshold handling). OCR results with `detection_confidence` (in `ocr_rec.result`) > 0.7 are recorded in the `photo_analyzed` event. If the model returns an empty string, the condition is marked failed.
+- **Enabled (`true`):** masking is applied to the image/frame before OCR detection, consistently on Android and iOS (masking → OCR detection → downstream model/threshold handling). OCR results with `detection_confidence` (in `ocr_rec.result`) > 0.7 are recorded in the `photo_analyzed` event. If the model returns an empty string, the condition is marked failed.
 - **Disabled (`false`):** the masking step is skipped entirely — the raw image/frame goes directly into OCR detection. All downstream behaviour (thresholds, rule analysis, enforcement, upload) is unchanged.
 - The flag only gates the masking step — photo capture, validation flow, and stop completion are never blocked by its value.
-- If the flag hasn't been set up, the default value is false. The masking package label will turn off in default. 
+- If the flag is absent from every config layer, the built-in fallback is **`false`** — masking turns OFF by default. Deleting the Consul key silently disables masking; to disable it explicitly, set the value to `false` instead. Source (`driver-app`, `lib/config/src/root_config.dart`):
+
+  ```dart
   bool get enablePackageMasking {
     return getBool("enable_package_masking", defaultValue: false);
   }
-- Set up the flag on Region, Warehouse, Driver level: using endpoint `/metadata/{{RG/WH/DR_id}}/APP_CONFIG/enable_package_masking`
+  ```
+
+- Set up the flag at Region, Warehouse, or Driver level: use endpoint `/metadata/{{RG/WH/DR_id}}/APP_CONFIG/enable_package_masking`
+
   ```json
   {
       "type": "java.lang.Boolean",
       "value": "true"
   }
   ```
-- Set up the flag on Client level: Add the flag in Delivery Setting
-      "enable_package_masking": "true"
+
+- **Client-level does NOT work**: the `/config` endpoint (`driver-app-api`, `AppInfoRS.java`) merges `item_metadata` `APP_CONFIG` overrides for driver, warehouse, and region owners only — `CL_x` owners and `client_settings.delivery_settings` are never read for this flag. Adding `enable_package_masking` to a client's Delivery Settings has no effect (the app config is per driver session; a route mixes shipments from many clients).
 
 
 ### Validation & AI Rules
