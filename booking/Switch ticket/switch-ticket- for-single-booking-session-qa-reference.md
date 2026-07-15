@@ -30,16 +30,10 @@ The feature ships behind the remote-config flag `enable_switch_ticket` (default 
 
 On the Total Booked screen and the Booking Session (BS) detail screen, an already-booked ticket shows either **Unbook** or **Edit** depending on `enable_switch_ticket` — see [Feature Flags](#feature-flags) for the exact per-screen behavior.
 
-| `enable_switch_ticket = true` | `enable_switch_ticket = false` |
-| --- | --- |
-| ![Total Booked — Edit button (true)](images/enable-switch-ticket-true-total-booked.png) | ![Total Booked — Unbook button (false)](images/enable-switch-ticket-false-total-booked.png) |
-| ![BS Detail — Edit button (true)](images/enable-switch-ticket-true-bs-detail.png) | ![BS Detail — Unbook button (false)](images/enable-switch-ticket-false-bs-detail.png) |
-
 ### Edit Popup
 
 Tapping Edit opens a popup with **Switch** and **Unbook**. It pre-checks whether any other group is available to switch into — spinner while loading, disabled "no available tickets" state if none, so the driver never enters an empty switch screen.
 
-![Edit Ticket popup — Switch / Unbook](images/edit-popup.png)
 
 ```dart
 // lib/screens/booking/switch_ticket/edit_booking_popup.dart
@@ -56,8 +50,6 @@ One-time explainer shown after tapping Switch: tells the driver they'll land on 
 
 While in switch mode, only switchable groups **within the same booking session as the source ticket** are listed — excludes the ticket's own group, includes other zones/groups the driver already holds a *different* ticket in, and **ignores the reservation/ticket-count limit** (a switch is a trade, not a new booking). There is no cross-session or route switching — the target must be another group in the same BS.
 
-![Switch-mode target selection on Booking Session screen](images/switch-target-selection.png)
-
 ```dart
 // lib/screens/booking/booking_mixin.dart
 bool canSwitchToGroup({required session, required group, required sourceTicketId}) {
@@ -68,8 +60,6 @@ bool canSwitchToGroup({required session, required group, required sourceTicketId
 ### Switch Confirmation Popup
 
 Shows only the destination ticket, plus the pickup-ETA carry-over note (reserved ETA shown as unchanged, or a generic "reserve your ETA" notice if none). This notice is still a static i18n string — an attempt to make it remote-configurable (PR #2145) was closed unmerged.
-
-![Switch Confirmation popup — destination + ETA carry-over note](images/switch-confirmation-popup.png)
 
 ### Switch Execution & Analytics
 
