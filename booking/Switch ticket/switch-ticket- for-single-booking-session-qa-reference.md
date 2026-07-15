@@ -102,7 +102,6 @@ Consul (staging): https://consul-staging.gojitsu.sdm.network/ui/dc1-staging/kv/s
 | `false` **(default)** | Both screens show only the **Unbook** button — no Edit, no Switch entry point at all. |
 | `true` | Both screens show the **Edit** button instead of Unbook. Tapping it opens the Edit popup (Switch + Unbook actions). |
 
-Not named in any ticket — found directly in `root_config.dart`, `booked_ticket_item_box.dart:78`, and `booked_ticket_item.dart:196`.
 
 #### `text_no_ticket_to_switch`
 
@@ -147,7 +146,133 @@ Body: {"type": "java.lang.String", "value": "true"}
 ```
 This turns the feature on for driver 11159 regardless of their region/warehouse/global setting, and does not affect any other driver.
 
-## Acceptance Criteria — `enable_switch_ticket` Config Precedence
+## Acceptance Criteria — Switch Ticket Functional (BE)
+
+Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested at the API layer. One duplicate was folded before writing these: the generic *"Target session/group unavailable / full / invalid"* case is subsumed by **BE-AC18** (zone at limit) and **BE-AC19** (target group not found), which assert the same outcome with more precise conditions and responses.
+
+**BE-AC1 — Switch to a ticket in a different zone within the same booking session succeeds**
+**Given** the driver has an active TICKET-type booking session with 1 booked ticket, and the session has another ticket available in a different zone,
+**When** `switch-group` is called with `currentItemId` = the booked ticket and `targetGroup` = a ticket in a different zone,
+**Then** the API returns `200` with the new ticket's UID, the driver now holds the new (target) ticket with the original no longer booked, and the ticket limit does not increase (the switch is not counted as a new booking).
+
+**BE-AC2 — Switching a route to another route is not allowed**
+**Given** the driver has an active TICKET-type booking session, and both `currentItem` and `targetGroup` are routes (assignments),
+**When** `switch-group` is called with both current and target as routes,
+**Then** the API returns a "can't switch" error, and the original ticket/assignment remains unchanged (not released).
+
+**BE-AC3 — Switching to a ticket in the SAME zone as the original is not allowed**
+**Given** the target ticket belongs to the same zone as the original ticket,
+**When** `switch-group` is called with `targetGroup` in the same zone,
+**Then** the API returns an error, the change is not allowed, and the driver still holds the original ticket.
+
+**BE-AC4 — Switching to a ticket in a DIFFERENT zone is allowed**
+**Given** the target ticket belongs to a different zone than the original, and that zone doesn't match the zone of any other ticket the driver has booked,
+**When** `switch-group` is called with `targetGroup` in the different zone,
+**Then** the API returns `200` with the new ticket's UID, and the driver holds the new ticket while the original is released.
+
+**BE-AC5 — Switching into a zone matching another already-booked ticket's zone is allowed**
+**Given** the driver has previously booked another ticket in zone Z, and the target ticket is in zone Z (different from the original ticket's own zone),
+**When** `switch-group` is called with `targetGroup` in zone Z,
+**Then** the API returns `200` with the new ticket's UID, and the driver holds the new ticket in zone Z while the original is released.
+
+**BE-AC6 — Switching during an active probation period is allowed**
+**Given** the driver is within an active probation period and the target ticket is in a valid zone,
+**When** `switch-group` is called during probation,
+**Then** the API returns `200` with the new ticket's UID — probation does not block the switch.
+
+**BE-AC7 — A ticket switched into without an ETA is auto-voided after 5 minutes**
+**Given** reserve-pickup-ETA is enabled and the original ticket has not booked an ETA,
+**When** `switch-group` succeeds and no ETA is reserved for the new ticket within 5 minutes,
+**Then** the new ticket is automatically voided after 5 minutes and is no longer booked by the driver.
+
+**BE-AC8 — Switch succeeds when the original zone has no Redis cache, and none is created**
+**Given** the original zone has no `NUM_TICKET_LEFT` cache in Redis,
+**When** `switch-group` is called successfully,
+**Then** the API returns `200` with the new ticket's UID, and the original zone still has no cache afterward — none is auto-created.
+
+**BE-AC9 — Switch updates the original zone's Redis cache**
+**Given** the original zone has a `NUM_TICKET_LEFT` cache = *old*,
+**When** `switch-group` is called successfully,
+**Then** the original ticket is released from that zone and the cache updates to `NUM_TICKET_LEFT_new = old − 1`.
+
+**BE-AC10 — Switch succeeds when the target zone has no Redis cache, and none is created**
+**Given** the target zone has no `NUM_TICKET_LEFT` cache in Redis,
+**When** `switch-group` is called successfully,
+**Then** the API returns `200` with the new ticket's UID, and the target zone still has no cache afterward — none is auto-created.
+
+**BE-AC11 — Switch updates the target zone's Redis cache**
+**Given** the target zone has a `NUM_TICKET_LEFT` cache = *old*,
+**When** `switch-group` is called successfully,
+**Then** the driver takes one ticket in the target zone and the cache updates to `NUM_TICKET_LEFT_new = old + 1`.
+
+**BE-AC12 — Load-detail-booking API reflects updated `group_availability` after switch**
+**Given** both the original and target zones have `group_availability` data, recorded before the switch,
+**When** `switch-group` is called successfully and the Load detail ticket booking API is called again,
+**Then** the original zone's `group_availability` increases by 1 (`old + 1`) and the target zone's decreases by 1 (`old − 1`).
+
+**BE-AC13 — Switch does not count against the ticket limit, even at the max limit**
+**Given** the driver currently holds a number of tickets equal to the max daily ticket limit,
+**When** `switch-group` is called to another zone,
+**Then** the API returns `200` with the new ticket's UID, and the driver's total ticket count remains unchanged (still at the max limit) — the switch is not blocked by the booking limit.
+
+**BE-AC14 — No restriction on the number of times a driver can switch**
+**Given** multiple valid zones are available to switch back and forth,
+**When** `switch-group` is called repeatedly (e.g. 3–5 times) across different zones,
+**Then** every call returns `200` with a new ticket UID, none are blocked by any switch-count limit, and the driver ends up holding the ticket in the last zone switched to.
+
+**BE-AC15 — A switch that would exceed the daily time limit is blocked with 412**
+**Given** the target ticket's work duration would push the driver's total daily hours over the daily time limit,
+**When** `switch-group` is called to that target,
+**Then** the API returns HTTP `412` (PRECONDITION_FAILED) with a message about the time limit, and the driver still holds the original ticket — no switch occurs.
+
+**BE-AC16 — A switch within the daily time limit succeeds**
+**Given** the target ticket does not exceed the driver's daily time limit,
+**When** `switch-group` is called to that target,
+**Then** the API returns `200` with the new ticket's UID and the switch succeeds, not blocked by `412`.
+
+**BE-AC17 — A distinct "Change Ticket" event is emitted, with no cancel event logged**
+**Given** event/analytics logging is inspectable,
+**When** `switch-group` is called successfully,
+**Then** a distinct "Change Ticket" event is recorded, and no cancel/unbook event is emitted for the original ticket.
+
+**BE-AC18 — Switching to a zone at its booking limit (full) is not allowed**
+**Given** the target zone has reached its booking limit (`NUM_TICKET_LEFT = 0`),
+**When** `switch-group` is called with `targetGroup` in that zone,
+**Then** the API returns an error and the switch is not allowed — the driver cannot switch into a full zone.
+
+**BE-AC19 — Switching to a target group that does not exist returns 409**
+**Given** the `targetGroup` ID does not correspond to any group in the session,
+**When** `switch-group` is called with that non-existent `targetGroup`,
+**Then** the API returns HTTP `409 Conflict` with a message such as `"Target group not in session: <id>"`, and the driver's ticket is unchanged.
+
+**BE-AC20 — Switching from a current item that does not exist or is already void fails**
+**Given** the `currentItemId` does not exist or refers to an already-voided ticket,
+**When** `switch-group` is called with that `currentItemId`,
+**Then** the API returns an error, no swap is performed, and the driver's ticket is unchanged.
+
+**BE-AC21 — The 5-minute void timer after a switch counts from the switch time, not the original booking time**
+**Given** reserve-pickup-ETA is enabled, the original ticket was booked at T0 without an ETA, and roughly 5 minutes have already elapsed since T0,
+**When** `switch-group` is called at T1 (≈ T0 + 4 minutes) to a new ticket without reserving an ETA,
+**Then** the switch succeeds; the new ticket is **not** voided at T0 + 5 minutes (the timer does not inherit T0), but **is** auto-voided exactly at T1 + 5 minutes — the countdown restarts from the switch time.
+
+**BE-AC22 — New ticket is not voided past 5 minutes when no valid ETA slot exists to reserve** *(incomplete in source)*
+**Given** reserve-pickup-ETA is enabled, the original ticket has no ETA, and no valid ETA time slot is available to reserve,
+**When** *(the source test case only specified confirming that no valid ETA slot exists — the switch step and final assertion were not provided)*,
+**Then** *(expected result not specified in the source; needs the remaining steps filled in before this can be executed)*.
+
+**BE-AC23 — Switching to a zone before its `booking_start_time` is not allowed**
+**Given** the target zone's `booking_start_time` is still in the future (booking has not opened),
+**When** `switch-group` is called with `targetGroup` in that zone,
+**Then** the API returns an error and the switch is not allowed.
+
+**BE-AC24 — E2E: Delivery succeeds on a ticket after it has been switched**
+**Given** a driver has booked a ticket and then switched to another ticket,
+**When** delivery is performed on the ticket after switching,
+**Then** the delivery completes successfully.
+
+---
+
+## Acceptance Criteria — `enable_switch_ticket` Config Precedence (FE)
 
 Covers the **Driver > Warehouse > Region > Global** precedence end-to-end. All cases assume the driver's active region/warehouse/driver-ID are already known (resolve via the "How to set up each level" table above if needed).
 
