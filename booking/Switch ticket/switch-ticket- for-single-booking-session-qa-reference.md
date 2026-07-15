@@ -109,6 +109,7 @@ Body: {"type": "java.lang.Boolean", "value": "true"}
 - **BE analytics AC unconfirmed** — ALT-1761 asks for a distinct backend-side "switch" event too; `BookingManager.switchGroup` (driver-app-api) emits nothing itself. Only the FE-side `switch-ticket` event (via `EventController`, offline-durable, not Jitsu) is confirmed.
 - **`driver-pool-api` unverified** — the actual gRPC swap (`switchGroupWithModel`) is implemented there; that repo isn't accessible to the QA token, so its change was never independently reviewed.
 - **Scope reduction** — MOB-2593 originally asked for switching into both ticket sessions and DB sessions; only ticket-session switching shipped.
+
 ## Key files
 
 - driver-app: `lib/screens/booking/switch_ticket/*`, `lib/screens/booking/booking_mixin.dart`, `lib/config/src/root_config.dart`, `lib/config/src/text_config.dart`
