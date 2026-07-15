@@ -3,7 +3,7 @@
 > Source: [Confluence — Switch a booked ticket](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2599256076/Switch+a+booked+ticket)
 > Tickets: [MOB-2917](https://gojitsu.atlassian.net/browse/MOB-2917) (FE, this doc) · [MOB-2593](https://gojitsu.atlassian.net/browse/MOB-2593) (FE, original story) · [MOB-2965](https://gojitsu.atlassian.net/browse/MOB-2965) (bug) · [ALT-1761](https://gojitsu.atlassian.net/browse/ALT-1761) (BE)
 >
-> Screenshots referenced below (Edit button true/false, popups) live on the Confluence page — image blobs aren't portable into this repo.
+> Screenshots below are captured from the driver-app QA build (iOS Simulator).
 
 ## Overview
 
@@ -30,13 +30,16 @@ The feature ships behind the remote-config flag `enable_switch_ticket` (default 
 
 On the Total Booked screen and the Booking Session (BS) detail screen, an already-booked ticket shows either **Unbook** or **Edit** depending on `enable_switch_ticket` — see [Feature Flags](#feature-flags) for the exact per-screen behavior.
 
-*(Screenshots on Confluence: side-by-side comparison of `enable_switch_ticket = true` vs `= false` on both the Total Booked screen and BS detail screen.)*
+| `enable_switch_ticket = true` | `enable_switch_ticket = false` |
+| --- | --- |
+| ![Total Booked — Edit button (true)](images/enable-switch-ticket-true-total-booked.png) | ![Total Booked — Unbook button (false)](images/enable-switch-ticket-false-total-booked.png) |
+| ![BS Detail — Edit button (true)](images/enable-switch-ticket-true-bs-detail.png) | ![BS Detail — Unbook button (false)](images/enable-switch-ticket-false-bs-detail.png) |
 
 ### Edit Popup
 
 Tapping Edit opens a popup with **Switch** and **Unbook**. It pre-checks whether any other group is available to switch into — spinner while loading, disabled "no available tickets" state if none, so the driver never enters an empty switch screen.
 
-*(Screenshot on Confluence: Edit popup showing Switch + Unbook.)*
+![Edit Ticket popup — Switch / Unbook](images/edit-popup.png)
 
 ```dart
 // lib/screens/booking/switch_ticket/edit_booking_popup.dart
@@ -53,7 +56,7 @@ One-time explainer shown after tapping Switch: tells the driver they'll land on 
 
 While in switch mode, only switchable groups **within the same booking session as the source ticket** are listed — excludes the ticket's own group, includes other zones/groups the driver already holds a *different* ticket in, and **ignores the reservation/ticket-count limit** (a switch is a trade, not a new booking). There is no cross-session or route switching — the target must be another group in the same BS.
 
-*(Screenshot on Confluence: switch-mode target list.)*
+![Switch-mode target selection on Booking Session screen](images/switch-target-selection.png)
 
 ```dart
 // lib/screens/booking/booking_mixin.dart
@@ -66,7 +69,7 @@ bool canSwitchToGroup({required session, required group, required sourceTicketId
 
 Shows only the destination ticket, plus the pickup-ETA carry-over note (reserved ETA shown as unchanged, or a generic "reserve your ETA" notice if none). This notice is still a static i18n string — an attempt to make it remote-configurable (PR #2145) was closed unmerged.
 
-*(Screenshot on Confluence: confirmation popup with destination + ETA note.)*
+![Switch Confirmation popup — destination + ETA carry-over note](images/switch-confirmation-popup.png)
 
 ### Switch Execution & Analytics
 
