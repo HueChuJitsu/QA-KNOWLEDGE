@@ -395,12 +395,12 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 **When** the driver taps "Switch" to confirm,
 **Then** the confirm fails gracefully with a clear error message (zone now full / session no longer available), the driver returns to the Booking Sessions screen to pick another option, and the original ticket remains booked and unaffected.
 
-### Regression
-
 **FE-AC27 — Driver switches ticket multiple times (≥3) in one session**
 **Given** the driver has 1 booked ticket and at least 3 other tickets/routes available to switch to sequentially,
 **When** the driver performs Switch #1, immediately performs Switch #2 on the newly booked ticket, and then performs Switch #3,
 **Then** each switch succeeds with no restriction or error, none of the switches count against the ticket limit, and the driver still holds exactly 1 booked ticket after all switches.
+
+### Regression
 
 **FE-AC28 — Unbook flow regression check (Edit Ticket popup)**
 **Given** the driver has at least 1 booked ticket/route,
@@ -430,4 +430,3 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 **Then** the app behaves identically to the `false` case — no Edit/Switch entry point is shown, the existing cancel/unbook flow still works, and the app behaves stably and predictably with no crash or inconsistent state due to the missing explicit config.
 
 ---
-
