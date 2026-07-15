@@ -2,8 +2,6 @@
 
 > Source: [Confluence — Switch a booked ticket](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2599256076/Switch+a+booked+ticket)
 > Tickets: [MOB-2917](https://gojitsu.atlassian.net/browse/MOB-2917) (FE, this doc) · [MOB-2593](https://gojitsu.atlassian.net/browse/MOB-2593) (FE, original story) · [MOB-2965](https://gojitsu.atlassian.net/browse/MOB-2965) (bug) · [ALT-1761](https://gojitsu.atlassian.net/browse/ALT-1761) (BE)
->
-> Screenshots below are captured from the driver-app QA build (iOS Simulator).
 
 ## Overview
 
@@ -19,7 +17,7 @@ The feature ships behind the remote-config flag `enable_switch_ticket` (default 
 - **Target selection (FE):** `canSwitchToGroup` only offers other zones **within the same booking session** as the source ticket, excludes the ticket's own group, and ignores the reservation/ticket-count limit entirely. Route bookings are not eligible — Edit/Switch is not wired into the route booking widget at all.
 - **Swap (BE):** `PUT /booking/{id}/switch-group/{currentItemId}/to/{targetGroup}` → `BookingManager.switchGroup` loads the session **fail-closed** (409 on load failure), then swaps via gRPC `switchGroupWithModel` — contract + client live in **dispatch-bizlogic**, but the RPC is **implemented server-side in `driver-pool-api`** (repo not accessible to the QA token — never independently verified). The swap is atomic: the original ticket releases only after the new one is confirmed, so the driver is never at 0 or 2 tickets.
 - **Guard:** before swapping, a daily working-time-limit check blocks with `412` if the net time delta (release current group − acquire target group) would exceed the driver's daily limit, using a policy provisioned per region (see [Core Rule](#core-rule--switch-api)). This is unrelated to the per-session ticket-count limit, which switches bypass completely.
-- **After success:** pickup window carried over, pickup ETA processed + confirmation SMS sent, Redis "tickets left" updated, FE fires the offline-durable `switch-ticket` analytics event.
+- **After success:** pickup window carried over, pickup ETA processed, Redis "tickets left" updated, FE fires the offline-durable `switch-ticket` analytics event.
 - **Known gap:** ALT-1761's AC asks for a distinct BE-side event too, but `BookingManager.switchGroup` emits nothing itself — only the FE-side `switch-ticket` event is confirmed today.
 
 ---
@@ -35,13 +33,6 @@ On the Total Booked screen and the Booking Session (BS) detail screen, an alread
 Tapping Edit opens a popup with **Switch** and **Unbook**. It pre-checks whether any other group is available to switch into — spinner while loading, disabled "no available tickets" state if none, so the driver never enters an empty switch screen.
 
 
-```dart
-// lib/screens/booking/switch_ticket/edit_booking_popup.dart
-final session = await ref.read(bookingHttpProvider).getSession(...);
-canSwitch = visibleGroups(session: session, switchMode: true, switchSourceTicketId: ...).isNotEmpty;
-// on error: canSwitch = true — fail open, let the session screen handle the empty case
-```
-
 ### Switch Instructions Popup
 
 One-time explainer shown after tapping Switch: tells the driver they'll land on the Booking Session screen and tap "Book" on a target ticket to complete the switch.
@@ -50,29 +41,15 @@ One-time explainer shown after tapping Switch: tells the driver they'll land on 
 
 While in switch mode, only switchable groups **within the same booking session as the source ticket** are listed — excludes the ticket's own group, includes other zones/groups the driver already holds a *different* ticket in, and **ignores the reservation/ticket-count limit** (a switch is a trade, not a new booking). There is no cross-session or route switching — the target must be another group in the same BS.
 
-```dart
-// lib/screens/booking/booking_mixin.dart
-bool canSwitchToGroup({required session, required group, required sourceTicketId}) {
-  return isAvailable(session: session, group: group) && !isSourceGroup(group: group, sourceTicketId: sourceTicketId);
-}
-```
 
 ### Switch Confirmation Popup
 
-Shows only the destination ticket, plus the pickup-ETA carry-over note (reserved ETA shown as unchanged, or a generic "reserve your ETA" notice if none). This notice is still a static i18n string — an attempt to make it remote-configurable (PR #2145) was closed unmerged.
+Shows only the destination ticket, plus the pickup-ETA carry-over note (reserved ETA shown as unchanged, or a generic "reserve your ETA" notice if none).
 
 ### Switch Execution & Analytics
 
 On confirmation: calls the switch API, fires the `switch-ticket` analytics event (fire-and-forget, via the offline-capable `EventController` — not Jitsu, so it survives connectivity loss), and refreshes schedules.
 
-```dart
-// lib/screens/booking/booking_session/booking_session_detail_notifier.dart
-await repository.switchTicket(sessionId: sessionUID, ticketId: ticketId, groupId: groupId);
-unawaited(_logSwitchTicketEvent(...));
-unawaited(scheduleNotifier.loadSchedules());
-```
-
----
 
 ### Feature Flags
 
@@ -102,22 +79,8 @@ Controls the message shown on the **Booking Session screen, in switch mode**, wh
 
 **Not** `no_ticket_to_switch` — the getter lives on `TextConfig`, which has `groupKey = "text"`, so the real override key is group-prefixed (`text.no_ticket_to_switch` → `text_no_ticket_to_switch`). Optional — the feature works fine unset. Not named in any ticket.
 
-```dart
-// lib/config/src/root_config.dart
-bool get enableSwitchTicket => getBool("enable_switch_ticket", defaultValue: false);
-```
 
 **Resolution levels & priority.** Resolved via `GET /app/config`, merging overrides from 4 levels. **Priority (highest wins, no OR logic): Driver > Warehouse > Region > Global.** An override at a higher level completely replaces the lower one's value — `true` or `false`, whichever is set closest to the driver:
-
-```java
-// driver-app-api/resource/AppInfoRS.java
-List<String> uids = ImmutableList.of(UIDFactory.REGION, UIDFactory.WAREHOUSE, UIDFactory.DRIVER);
-for (String uid : uids) {
-    metadataList.forEach(metadata -> {
-        if (uid.equals(metadata.owner.type)) addMetadataToMap(metadata, conf); // conf.put — later wins
-    });
-}
-```
 
 - **Global** — Consul KV `mobileAppConfig.enable_switch_ticket`.
 - **Region** — Mongo `item_metadata` (owner `RG_<regionCode>`, scope `APP_CONFIG`); resolved from the driver's **active** row in `driver_regions` (`is_active IS TRUE`).
@@ -150,6 +113,109 @@ PUT /metadata/DR_11159/APP_CONFIG/enable_switch_ticket
 Body: {"type": "java.lang.Boolean", "value": "true"}
 ```
 This turns the feature on for driver 11159 regardless of their region/warehouse/global setting, and does not affect any other driver.
+
+### Test Cases — `enable_switch_ticket` Precedence Resolution
+
+Covers the **Driver > Warehouse > Region > Global** precedence end-to-end. All cases assume the driver's active region/warehouse/driver-ID are already known (resolve via the "How to set up each level" table above if needed).
+
+#### TC1 — Resolves from REGION when WAREHOUSE and DRIVER are unset
+
+**Precondition:** `enable_switch_ticket` configured ONLY at REGION level = `true`; WAREHOUSE and DRIVER unset for this driver.
+**Data:** `REGION=true, WAREHOUSE=unset, DRIVER=unset`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config via config/dev tool for this driver's region/warehouse/driver ID | REGION=true; WAREHOUSE and DRIVER show no override configured |
+| 2 | Login as a driver belonging to this region (no warehouse/driver override) | Effective flag value resolves to `true` (from REGION) |
+| 3 | Navigate to Booked ticket screen | "Edit" button and Switch flow are available, consistent with flag = `true` |
+
+#### TC2 — Resolves from WAREHOUSE when only WAREHOUSE is configured
+
+**Precondition:** `enable_switch_ticket` configured ONLY at WAREHOUSE level = `true`; REGION and DRIVER unset.
+**Data:** `REGION=unset, WAREHOUSE=true, DRIVER=unset`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config via config/dev tool | WAREHOUSE=true; REGION and DRIVER show no override |
+| 2 | Login as a driver belonging to this warehouse | Effective flag resolves to `true` (from WAREHOUSE) |
+| 3 | Navigate to Booked ticket screen | "Edit" button and Switch flow are available |
+
+#### TC3 — Resolves from DRIVER when only DRIVER is configured
+
+**Precondition:** `enable_switch_ticket` configured ONLY at DRIVER level = `true` for a specific driver; REGION and WAREHOUSE unset.
+**Data:** `REGION=unset, WAREHOUSE=unset, DRIVER=true`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config for this specific driver | DRIVER=true; REGION and WAREHOUSE show no override |
+| 2 | Login as that driver | Effective flag resolves to `true` (from DRIVER) |
+| 3 | Navigate to Booked ticket screen | "Edit" button and Switch flow are available for this driver only |
+
+#### TC4 — WAREHOUSE overrides REGION when both configured with conflicting values
+
+**Precondition:** `enable_switch_ticket`: REGION=`true`, WAREHOUSE=`false` for this driver's warehouse; no DRIVER-level override exists.
+**Data:** `REGION=true, WAREHOUSE=false, DRIVER=unset`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config | REGION=true, WAREHOUSE=false, DRIVER unset |
+| 2 | Login as a driver in this warehouse | Effective flag resolves to `false` (WAREHOUSE overrides REGION) |
+| 3 | Navigate to Booked ticket screen | No "Edit"/Switch entry point is shown; feature behaves as disabled, same as flag = `false` |
+
+#### TC5 — DRIVER overrides WAREHOUSE when both configured with conflicting values
+
+**Precondition:** `enable_switch_ticket`: WAREHOUSE=`true` for the warehouse, DRIVER=`false` for one specific driver (Driver A) in that warehouse; another driver (Driver B) in the same warehouse has no DRIVER-level override.
+**Data:** `REGION=unset, WAREHOUSE=true, DRIVER=false (Driver A only)`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config | WAREHOUSE=true; DRIVER=false for Driver A |
+| 2 | Login as Driver A | Effective flag resolves to `false` (DRIVER overrides WAREHOUSE); no "Edit"/Switch entry point shown |
+| 3 | Login as Driver B (same warehouse, no DRIVER-level override) | Effective flag resolves to `true` (falls back to WAREHOUSE); "Edit"/Switch feature is available for Driver B, unaffected by Driver A's override |
+
+#### TC6 — DRIVER overrides REGION directly when WAREHOUSE is unset
+
+**Precondition:** `enable_switch_ticket`: REGION=`false`, WAREHOUSE=unset, DRIVER=`true` for a specific driver.
+**Data:** `REGION=false, WAREHOUSE=unset, DRIVER=true`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config | REGION=false, WAREHOUSE unset, DRIVER=true for this driver |
+| 2 | Login as this driver | Effective flag resolves to `true` (DRIVER overrides REGION, skipping the unset WAREHOUSE level) |
+| 3 | Navigate to Booked ticket screen | "Edit"/Switch feature is available for this driver, despite the region-level flag being `false` |
+
+#### TC7 — DRIVER overrides both WAREHOUSE and REGION when all three conflict
+
+**Precondition:** `enable_switch_ticket`: REGION=`true`, WAREHOUSE=`true`, DRIVER=`false` for a specific driver.
+**Data:** `REGION=true, WAREHOUSE=true, DRIVER=false`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config at all 3 levels | REGION=true, WAREHOUSE=true, DRIVER=false |
+| 2 | Login as this driver | Effective flag resolves to `false` (DRIVER, the most specific level, takes final precedence) |
+| 3 | Navigate to Booked ticket screen | No "Edit"/Switch entry point is shown for this driver, even though REGION and WAREHOUSE are both `true` |
+
+#### TC8 — Resolves to default (`false`) when no level is configured
+
+**Precondition:** `enable_switch_ticket` not configured at REGION, WAREHOUSE, or DRIVER level for this driver.
+**Data:** `REGION=unset, WAREHOUSE=unset, DRIVER=unset`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm no configuration exists at any level | All 3 levels show unset/no override |
+| 2 | Login as this driver | Effective flag resolves to its default value (`false`) |
+| 3 | Navigate to Booked ticket screen | No "Edit"/Switch entry point is shown, consistent with flag = `false`/default |
+
+#### TC9 — Consistent resolution when all 3 levels agree (no real conflict)
+
+**Precondition:** `enable_switch_ticket`: REGION=`true`, WAREHOUSE=`true`, DRIVER=`true`.
+**Data:** `REGION=true, WAREHOUSE=true, DRIVER=true`
+
+| Step | Action | Expected Result |
+| --- | --- | --- |
+| 1 | Confirm flag config at all 3 levels | All three levels = `true` |
+| 2 | Login as this driver | Effective flag resolves to `true`; no conflict, all levels agree |
+| 3 | Navigate to Booked ticket screen | "Edit"/Switch feature is fully available |
 
 ---
 
