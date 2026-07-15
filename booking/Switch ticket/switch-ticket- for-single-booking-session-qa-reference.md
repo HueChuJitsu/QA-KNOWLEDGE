@@ -272,59 +272,6 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 
 ---
 
-## Acceptance Criteria — `enable_switch_ticket` Config Precedence (FE)
-
-Covers the **Driver > Warehouse > Region > Global** precedence end-to-end. All cases assume the driver's active region/warehouse/driver-ID are already known (resolve via the "How to set up each level" table above if needed).
-
-**AC1 — Resolves from REGION when WAREHOUSE and DRIVER are unset**
-**Given** `enable_switch_ticket` is configured only at REGION level (`= true`), with WAREHOUSE and DRIVER unset for this driver,
-**When** a driver belonging to that region (no warehouse/driver override) logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to `true` (from REGION), and the "Edit" button and Switch flow are available.
-
-**AC2 — Resolves from WAREHOUSE when only WAREHOUSE is configured**
-**Given** `enable_switch_ticket` is configured only at WAREHOUSE level (`= true`), with REGION and DRIVER unset,
-**When** a driver belonging to that warehouse logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to `true` (from WAREHOUSE), and the "Edit" button and Switch flow are available.
-
-**AC3 — Resolves from DRIVER when only DRIVER is configured**
-**Given** `enable_switch_ticket` is configured only at DRIVER level (`= true`) for a specific driver, with REGION and WAREHOUSE unset,
-**When** that driver logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to `true` (from DRIVER), and the "Edit" button and Switch flow are available for that driver only.
-
-**AC4 — WAREHOUSE overrides REGION when both are configured with conflicting values**
-**Given** `enable_switch_ticket` is REGION=`true` and WAREHOUSE=`false` for a driver's warehouse, with no DRIVER-level override,
-**When** a driver in that warehouse logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to `false` (WAREHOUSE overrides REGION), and no "Edit"/Switch entry point is shown — the feature behaves as disabled.
-
-**AC5 — DRIVER overrides WAREHOUSE when both are configured with conflicting values**
-**Given** `enable_switch_ticket` is WAREHOUSE=`true` for a warehouse and DRIVER=`false` for one specific driver (Driver A) in that warehouse, while another driver (Driver B) in the same warehouse has no DRIVER-level override,
-**When** Driver A logs in,
-**Then** the effective flag resolves to `false` (DRIVER overrides WAREHOUSE) and no "Edit"/Switch entry point is shown;
-**And when** Driver B logs in,
-**Then** the effective flag resolves to `true` (falls back to WAREHOUSE) and the feature is available for Driver B, unaffected by Driver A's override.
-
-**AC6 — DRIVER overrides REGION directly when WAREHOUSE is unset**
-**Given** `enable_switch_ticket` is REGION=`false`, WAREHOUSE unset, and DRIVER=`true` for a specific driver,
-**When** that driver logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to `true` (DRIVER overrides REGION, skipping the unset WAREHOUSE level), and the "Edit"/Switch feature is available despite the region-level flag being `false`.
-
-**AC7 — DRIVER overrides both WAREHOUSE and REGION when all three conflict**
-**Given** `enable_switch_ticket` is REGION=`true`, WAREHOUSE=`true`, and DRIVER=`false` for a specific driver,
-**When** that driver logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to `false` (DRIVER, the most specific level, takes final precedence), and no "Edit"/Switch entry point is shown, even though REGION and WAREHOUSE are both `true`.
-
-**AC8 — Resolves to default (`false`) when no level is configured**
-**Given** `enable_switch_ticket` is not configured at REGION, WAREHOUSE, or DRIVER level for a driver,
-**When** that driver logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to its default value (`false`), and no "Edit"/Switch entry point is shown.
-
-**AC9 — Consistent resolution when all 3 levels agree (no real conflict)**
-**Given** `enable_switch_ticket` is REGION=`true`, WAREHOUSE=`true`, and DRIVER=`true` (all levels agree),
-**When** that driver logs in and navigates to the Booked ticket screen,
-**Then** the effective flag resolves to `true` with no conflict, and the "Edit"/Switch feature is fully available.
-
----
-
 ## Acceptance Criteria — Switch Ticket Functional (FE)
 
 ### Entry point & button styling
@@ -500,6 +447,59 @@ Covers the **Driver > Warehouse > Region > Global** precedence end-to-end. All c
 **Given** `enable_switch_ticket` is not explicitly configured for the driver's app config (falls back to its default, same as `false`) and the driver has at least 1 ticket/route booked,
 **When** the driver navigates to the Total Booked/BS screen,
 **Then** the app behaves identically to the `false` case — no Edit/Switch entry point is shown, the existing cancel/unbook flow still works, and the app behaves stably and predictably with no crash or inconsistent state due to the missing explicit config.
+
+---
+
+## Acceptance Criteria — `enable_switch_ticket` Config Precedence (FE)
+
+Covers the **Driver > Warehouse > Region > Global** precedence end-to-end. All cases assume the driver's active region/warehouse/driver-ID are already known (resolve via the "How to set up each level" table above if needed).
+
+**AC1 — Resolves from REGION when WAREHOUSE and DRIVER are unset**
+**Given** `enable_switch_ticket` is configured only at REGION level (`= true`), with WAREHOUSE and DRIVER unset for this driver,
+**When** a driver belonging to that region (no warehouse/driver override) logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to `true` (from REGION), and the "Edit" button and Switch flow are available.
+
+**AC2 — Resolves from WAREHOUSE when only WAREHOUSE is configured**
+**Given** `enable_switch_ticket` is configured only at WAREHOUSE level (`= true`), with REGION and DRIVER unset,
+**When** a driver belonging to that warehouse logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to `true` (from WAREHOUSE), and the "Edit" button and Switch flow are available.
+
+**AC3 — Resolves from DRIVER when only DRIVER is configured**
+**Given** `enable_switch_ticket` is configured only at DRIVER level (`= true`) for a specific driver, with REGION and WAREHOUSE unset,
+**When** that driver logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to `true` (from DRIVER), and the "Edit" button and Switch flow are available for that driver only.
+
+**AC4 — WAREHOUSE overrides REGION when both are configured with conflicting values**
+**Given** `enable_switch_ticket` is REGION=`true` and WAREHOUSE=`false` for a driver's warehouse, with no DRIVER-level override,
+**When** a driver in that warehouse logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to `false` (WAREHOUSE overrides REGION), and no "Edit"/Switch entry point is shown — the feature behaves as disabled.
+
+**AC5 — DRIVER overrides WAREHOUSE when both are configured with conflicting values**
+**Given** `enable_switch_ticket` is WAREHOUSE=`true` for a warehouse and DRIVER=`false` for one specific driver (Driver A) in that warehouse, while another driver (Driver B) in the same warehouse has no DRIVER-level override,
+**When** Driver A logs in,
+**Then** the effective flag resolves to `false` (DRIVER overrides WAREHOUSE) and no "Edit"/Switch entry point is shown;
+**And when** Driver B logs in,
+**Then** the effective flag resolves to `true` (falls back to WAREHOUSE) and the feature is available for Driver B, unaffected by Driver A's override.
+
+**AC6 — DRIVER overrides REGION directly when WAREHOUSE is unset**
+**Given** `enable_switch_ticket` is REGION=`false`, WAREHOUSE unset, and DRIVER=`true` for a specific driver,
+**When** that driver logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to `true` (DRIVER overrides REGION, skipping the unset WAREHOUSE level), and the "Edit"/Switch feature is available despite the region-level flag being `false`.
+
+**AC7 — DRIVER overrides both WAREHOUSE and REGION when all three conflict**
+**Given** `enable_switch_ticket` is REGION=`true`, WAREHOUSE=`true`, and DRIVER=`false` for a specific driver,
+**When** that driver logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to `false` (DRIVER, the most specific level, takes final precedence), and no "Edit"/Switch entry point is shown, even though REGION and WAREHOUSE are both `true`.
+
+**AC8 — Resolves to default (`false`) when no level is configured**
+**Given** `enable_switch_ticket` is not configured at REGION, WAREHOUSE, or DRIVER level for a driver,
+**When** that driver logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to its default value (`false`), and no "Edit"/Switch entry point is shown.
+
+**AC9 — Consistent resolution when all 3 levels agree (no real conflict)**
+**Given** `enable_switch_ticket` is REGION=`true`, WAREHOUSE=`true`, and DRIVER=`true` (all levels agree),
+**When** that driver logs in and navigates to the Booked ticket screen,
+**Then** the effective flag resolves to `true` with no conflict, and the "Edit"/Switch feature is fully available.
 
 ---
 
