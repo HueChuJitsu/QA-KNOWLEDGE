@@ -15,13 +15,19 @@ The feature ships behind the remote-config flag `enable_switch_ticket` (default 
 ## E2E Flow
 
 ```
-Driver taps "Edit" on a booked ticket
+Driver taps "Edit" on a booked ticket → Show Edit ticket popup
         │
         ▼
 Any other group available? ──No──► Switch button disabled
         │ Yes
         ▼
-Switch Instructions popup → navigate to Booking Session (switch mode)
+Switch button enable
+        │
+        ▼
+Driver taps "Switch" on the Edit ticket popup → navigate to Switch Instructions popup
+        │
+        ▼
+Driver taps "Got it" on the Switch Instructions popup → navigate to Booking Session (switch mode)
         │
         ▼
 Driver taps "Book" on a target ticket → Switch Confirmation popup
@@ -37,7 +43,7 @@ Untouched   PUT /booking/{id}/switch-group/{currentItemId}/to/{targetGroup}
            ├─ load session (fail closed → 409)
            ├─ daily time-limit check (412 if over) ──► error, ticket untouched
            ├─ gRPC switchGroupWithModel (swap)
-           └─ on success: pickup ETA 
+           └─ on success: pickup ETA
               │
               ▼
          Booking screen reflects new ticket + "switch-ticket" analytics event fired
@@ -74,17 +80,17 @@ Shows only the destination ticket, plus the pickup-ETA carry-over note (reserved
 
 ### Switch Execution & Analytics
 
-On confirmation: calls the switch API, fires the `switch-ticket` analytics event (fire-and-forget, via the offline-capable `EventController` — not Jitsu, so it survives connectivity loss), and refreshes schedules.
+On confirmation: calls the switch API, fires the `switch-ticket` analytics event.
 
 ### Feature Flags
 
 #### `enable_switch_ticket`
 
-Gates the Edit/Switch entry point on the **Booked ticket screen** (Total Booked) and the **Booking Session Detail screen** (BS) — both read the flag directly (`DriverAppConfig.instance.root.enableSwitchTicket`) to pick which button to render on an already-booked ticket.
+Gates the Edit/Switch entry point on the **Booked ticket screen** (Total Booked) and the **Booking Session Detail screen** (BS).
 
 Consul (staging): https://consul-staging.gojitsu.sdm.network/ui/dc1-staging/kv/staging/apps/driverappapi/mobile_app_config/enable_switch_ticket/edit
 
-Don't need to restart the service after updating consult config.
+Don't need to restart the service after updating Consul config.
 
 | Value | What the driver sees |
 | --- | --- |
@@ -95,7 +101,7 @@ Don't need to restart the service after updating consult config.
 
 Consul (staging): https://consul-staging.gojitsu.sdm.network/ui/dc1-staging/kv/staging/apps/driverappapi/mobile_app_config/text_no_ticket_to_switch/edit
 
-Don't need to restart the service after updating consult config.
+Don't need to restart the service after updating Consul config.
 
 Controls the message shown on the **Booking Session screen, in switch mode**, when there is no other group left to switch into:
 
@@ -104,21 +110,24 @@ Controls the message shown on the **Booking Session screen, in switch mode**, wh
 | Not set (any level) | Default text: *"There are no available tickets to switch to in this session."* |
 | Set | The configured text is shown instead. |
 
-**Resolution levels & priority.** Resolved via `GET /app/config`, merging overrides from 4 levels. **Priority (highest wins, no OR logic): Driver > Warehouse > Region > Global.** An override at a higher level completely replaces the lower one's value — `true` or `false`, whichever is set closest to the driver:
+**Resolution levels & priority.** Resolved via `GET /app/config`, merging overrides from 5 levels. **Priority (highest wins, no OR logic): Driver > Warehouse > Region > Global (Mongo override) > Global (Consul).** An override at a higher level completely replaces the lower one's value — `true` or `false`, whichever is set closest to the driver:
 
-- **Global** — Consul KV `mobileAppConfig.enable_switch_ticket`.
-- **Region** — Mongo `item_metadata` (owner `RG_<regionCode>`, scope `APP_CONFIG`); resolved from the driver's **active** row in `driver_regions` (`is_active IS TRUE`).
+- **Global (Consul)** — Consul KV `mobileAppConfig.enable_switch_ticket`. Lowest priority.
+- **Global (Mongo override)** — Mongo `item_metadata` (owner `AP_driverappapi`, scope `APP_CONFIG`); overrides the Consul KV.
+- **Region** — same store (owner `RG_<regionCode>`, scope `APP_CONFIG`); resolved from the driver's **active** row in `driver_regions` (`is_active IS TRUE`).
 - **Warehouse** — same store (owner `WH_<warehouseId>`); resolved from the driver's **currently active assignment** (`assignments`, `is_active IS TRUE AND status <> 'COMPLETED'`) — the current route's warehouse, not a fixed home warehouse. No active assignment → no warehouse-level override applies.
 - **Driver** — same store (owner `DR_<driverId>`) — highest precedence.
-- Don't need to restart the service after updating item_metadata config.
 
-Overrides are managed via the admin-only `PUT /metadata/{uid}/{scope}/{key}`
+Don't need to restart the service after updating `item_metadata` config.
+
+Overrides are managed via the admin-only `PUT /metadata/{uid}/{scope}/{key}`.
 
 **How to set up each level:**
 
 | Level | Where it's resolved from | How to set it |
 | --- | --- | --- |
-| **4. Global** (lowest priority) | Consul KV `mobileAppConfig.enable_switch_ticket` | Edit the Consul key directly, e.g. staging: `apps/driverappapi/mobile_app_config/enable_switch_ticket` → set value `true`/`false`. Applies to every driver with no other override. |
+| **5. Global (Consul)** (lowest priority) | Consul KV `mobileAppConfig.enable_switch_ticket` | Edit the Consul key directly, e.g. staging: `apps/driverappapi/mobile_app_config/enable_switch_ticket` → set value `true`/`false`. Applies to every driver with no other override. |
+| **4. Global (Mongo override)** | `item_metadata` (owner `AP_driverappapi`, scope `APP_CONFIG`) | `PUT /metadata/AP_driverappapi/APP_CONFIG/enable_switch_ticket` with body `{"type": "java.lang.Boolean", "value": "true"}`. Overrides the Consul KV for every driver with no other override. |
 | **3. Region** | Driver's **active** row in `driver_regions` (`is_active IS TRUE`) | `PUT /metadata/RG_<regionCode>/APP_CONFIG/enable_switch_ticket` with body `{"type": "java.lang.Boolean", "value": "true"}`. Applies to all drivers whose active region matches `<regionCode>`. |
 | **2. Warehouse** | Driver's **currently active assignment** (`assignments`, `is_active IS TRUE AND status <> 'COMPLETED'`) — the warehouse of the route/job the driver is on right now, not a fixed home warehouse | `PUT /metadata/WH_<warehouseId>/APP_CONFIG/enable_switch_ticket` with the same body. No active assignment → this level never applies for that driver. |
 | **1. Driver** (highest priority) | The driver's own UID | `PUT /metadata/DR_<driverId>/APP_CONFIG/enable_switch_ticket` with the same body. Overrides every other level — use for per-driver testing/rollout. |
