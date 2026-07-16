@@ -246,7 +246,12 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 **When** *(the source test case only specified confirming that no valid ETA slot exists — the switch step and final assertion were not provided)*,
 **Then** *(expected result not specified in the source; needs the remaining steps filled in before this can be executed)*.
 
-**BE-AC23 — E2E: Delivery succeeds on a ticket after it has been switched**
+**BE-AC23 — Switching to a zone before its `booking_start_time` is not allowed**
+**Given** the target zone's `booking_start_time` is still in the future (booking has not opened),
+**When** `switch-group` is called with `targetGroup` in that zone,
+**Then** the API returns an error and the switch is not allowed.
+
+**BE-AC24 — E2E: Delivery succeeds on a ticket after it has been switched**
 **Given** a driver has booked a ticket and then switched to another ticket,
 **When** delivery is performed on the ticket after switching,
 **Then** the delivery completes successfully.
