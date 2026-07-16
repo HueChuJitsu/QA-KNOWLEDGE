@@ -117,7 +117,3 @@ after routing → client_settings.delivery_settings configured ?
 - **After routing — configured:** `client_settings.delivery_settings` set (e.g. `dropoff_earliest: "8H"`, `dropoff_latest: "22H"`) → after routing, `dropoff_earliest_ts` / `dropoff_latest_ts` reflect those hours.
 - **After routing — default:** `delivery_settings` not configured → window defaults to **8AM–8PM**.
 - **Stage precedence:** confirm whether the after-routing value overwrites the on-submit value (client_service / business override).
-- **Trigger guard:** Stage 1 runs on submit, Stage 2 after routing — confirm a not-yet-submitted / not-yet-routed shipment is not updated in the respective stage.
-- **Missing config:** non-business address with no matching `client_service`, or `dropoff_earliest` / `dropoff_latest` null → confirm expected behavior (skip / default / error).
-- **Downstream:** confirm the new `dropoff_earliest_ts` / `dropoff_latest_ts` propagate to consumers (e.g. OTD `min_dropoff_earliest_ts` / `deliveryByTs`).
-
