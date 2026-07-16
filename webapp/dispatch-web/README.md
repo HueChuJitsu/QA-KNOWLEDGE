@@ -13,6 +13,7 @@ Delivery) live in their own sub-folder under `functions/`.
 | Function | File | Status |
 |----------|------|--------|
 | Driver rating — OTD | [functions/driver-rating/otd.md](functions/driver-rating/otd.md) | Draft |
+| Update Delivery Time | [functions/update-delivery-time.md](functions/update-delivery-time.md) | Draft |
 
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
