@@ -14,6 +14,7 @@ Delivery) live in their own sub-folder under `functions/`.
 |----------|------|--------|
 | Driver rating — OTD | [functions/driver-rating/otd.md](functions/driver-rating/otd.md) | Draft |
 | Linehaul — Backend E2E Flow | [functions/linehaul/linehaul-e2e-be-flow.md](functions/linehaul/linehaul-e2e-be-flow.md) | Draft |
+| Update Delivery Time | [functions/update-delivery-time.md](functions/update-delivery-time.md) | Draft |
 
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
