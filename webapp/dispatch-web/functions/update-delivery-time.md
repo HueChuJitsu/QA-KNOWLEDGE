@@ -1,9 +1,5 @@
 # Function: Update Delivery Time
 
-> **App:** Dispatch Web · **Status:** Draft
-> **Shared context:** see [../README.md](../README.md)
->
-> **Source:** <!-- service / class / endpoint that handles the update -->
 > **Read from (on submit):** `client_service` (`dropoff_earliest`, `dropoff_latest`)
 > **Read from (after routing):** `client_settings.delivery_settings` (`dropoff_earliest`, `dropoff_latest`)
 > **Write to:** `shipments` table (`dropoff_earliest_ts`, `dropoff_latest_ts`)
@@ -111,11 +107,6 @@ after routing → client_settings.delivery_settings configured ?
 - **Stage 1** runs **after the shipment is submitted** (not on create/draft).
 - **Stage 2** runs **after routing completes**.
 
-<!-- Open questions to confirm:
-- Stage 1 vs Stage 2: does the after-routing value fully overwrite the on-submit value in all cases?
-- How is the hour-of-day ("8H") converted into a _ts (which date = delivery_date? which timezone)?
-- client_settings.delivery_settings: keyed by client_id? region? Any per-service overrides?
-- Business-address override (§3.2): does it still apply after routing, or only at submit? -->
 
 ## 4. QA / Test notes
 <!-- Happy cases, edge cases, sample data, things to watch when testing. -->
