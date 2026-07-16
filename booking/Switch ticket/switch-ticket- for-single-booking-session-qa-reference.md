@@ -10,7 +10,7 @@ Switch Ticket lets a driver move an already-booked **ticket** to a different ava
 
 **Scope:** this ships as **ticket-to-ticket switching within the same booking session (BS) only** — the driver switches to another zone/group inside the same BS they already booked in. **Route (direct) bookings are out of scope**: `direct_booking_item.dart` (the route booking widget) was not touched by this feature and still only offers Unbook, no Edit/Switch.
 
-The feature ships behind the remote-config flag `enable_switch_ticket` (default `false`) and is currently in **Staging Review** (as of 2026-07-14). FE work is tracked here (MOB-2917 / MOB-2593); the backend is **[ALT-1761](https://gojitsu.atlassian.net/browse/ALT-1761)** (Algorithmic Team), verified passed on staging/beta/prod.
+The feature ships behind the remote-config flag `enable_switch_ticket` (default `false`) and is currently in **Staging Review** (as of 2026-07-14). FE work is tracked here (MOB-2917 / MOB-2593); the backend is **[ALT-1761](https://gojitsu.atlassian.net/browse/ALT-1761)** (Algorithmic Team), verified passed on staging/prod.
 
 ## E2E Flow
 
@@ -262,13 +262,13 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 
 ### Entry point & button styling
 
-**FE-AC1 — "Book" button changes to "Edit" button on a booked ticket/route**
-**Given** the driver is logged in and has successfully booked at least 1 ticket/route,
-**When** the driver views the ticket/route card on the Total Booked screen and on the Booking Session (BS) screen containing the same ticket,
+**FE-AC1 — "Book" button changes to "Edit" button on a booked ticket**
+**Given** the driver is logged in and has successfully booked at least 1 ticket,
+**When** the driver views the ticket card on the Total Booked screen and on the Booking Session (BS) screen containing the same ticket,
 **Then** both cards show an "Edit" button instead of "Book", displayed with a filled green background per the final design.
 
 **FE-AC2 — Edit button style on Booked ticket card (Total Booked & BS screen)**
-**Given** the driver has at least 1 booked ticket/route,
+**Given** the driver has at least 1 booked ticket,
 **When** the driver views the Edit button on the Total Booked screen and on the BS screen showing the same ticket,
 **Then** the Edit button has a filled green background on both screens, consistent with the final design.
 
@@ -285,28 +285,28 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 ### End-to-end switch flow
 
 **FE-AC5 — E2E: Switch ticket from Booked ticket screen (Reserved ETA case)**
-**Given** the driver has 1 ticket booked with a Reserved Pickup ETA (e.g. 10:05 AM) and at least 1 other ticket/route is available to switch to,
-**When** the driver taps "Edit" on the Total Booked screen → "Switch" → "Got it" on the instructional dialog → "Book" on an available ticket/route → "Switch" to confirm (the confirmation popup summarizes the change and shows the Reserved ETA),
-**Then** the switch succeeds, the driver returns to the Active Route/Other tabs with the new ticket reflected as booked, and the old ticket is no longer shown as booked.
+**Given** the driver has 1 ticket booked with a Reserved Pickup ETA (e.g. 10:05 AM) and at least 1 other ticket is available to switch to,
+**When** the driver taps "Edit" on the Total Booked screen → "Switch" → "Got it" on the instructional dialog → "Book" on an available ticket → "Switch" to confirm (the confirmation popup summarizes the change and shows the Reserved ETA),
+**Then** the switch succeeds, the driver returns to the Active Other tabs with the new ticket reflected as booked, and the old ticket is no longer shown as booked.
 
 **FE-AC6 — E2E: Switch ticket from Detail Booking Session screen**
-**Given** the driver has 1 ticket booked, accessible via the Detail Booking Session screen, and at least 1 other ticket/route is available,
-**When** the driver taps "Edit" on that screen → "Switch" → "Got it" → "Book" on an available ticket/route → "Switch" to confirm,
-**Then** the switch succeeds and the driver returns to the Active Route tab with the new ticket reflected as booked.
+**Given** the driver has 1 ticket booked, accessible via the Detail Booking Session screen, and at least 1 other ticket is available,
+**When** the driver taps "Edit" on that screen → "Switch" → "Got it" → "Book" on an available ticket → "Switch" to confirm,
+**Then** the switch succeeds and the driver returns to the Active ticket tab with the new ticket reflected as booked.
 
 **FE-AC7 — E2E: Switch ticket, case without Reserved ETA**
-**Given** the driver has 1 ticket booked WITHOUT a Reserved Pickup ETA, and at least 1 other ticket/route is available,
-**When** the driver taps "Edit" → "Switch" → "Got it" → "Book" on an available ticket/route → "Switch" to confirm,
+**Given** the driver has 1 ticket booked WITHOUT a Reserved Pickup ETA, and at least 1 other ticket is available,
+**When** the driver taps "Edit" → "Switch" → "Got it" → "Book" on an available ticket → "Switch" to confirm,
 **Then** the confirmation popup shown before confirming has no ETA time field, the switch succeeds, the driver returns to the Active Route tab with the new ticket booked, and any "Reserve Pickup ETA by [time]" text still shows if applicable to the new ticket.
 
 **FE-AC8 — E2E: Switch ticket with 2 tickets booked in 2 groups of the same BS**
 **Given** the driver has booked 2 tickets, one in each of 2 different groups within the same Booking Session,
-**When** the driver taps "Edit" on one of the 2 booked tickets → "Switch" → "Got it" (redirected to Booking Sessions screen showing other available zones, excluding the 2 already booked) → "Book" on an available ticket/route → "Switch" to confirm,
+**When** the driver taps "Edit" on one of the 2 booked tickets → "Switch" → "Got it" (redirected to Booking Sessions screen showing other available zones, excluding the 2 already booked) → "Book" on an available ticket → "Switch" to confirm,
 **Then** the switch succeeds for the selected ticket only, and the other booked ticket (in the other group) remains unaffected.
 
 **FE-AC9 — Confirmation popup shows from → to summary**
 **Given** the driver is mid-way through the Switch flow and has selected a new ticket,
-**When** the driver taps "Book" on the new ticket/route,
+**When** the driver taps "Book" on the new ticket,
 **Then** the Switch confirmation popup opens and clearly displays both the current (from) and new (to) ticket info, so the driver can verify the change before confirming.
 
 **FE-AC10 — Tap Cancel on Confirmation popup keeps original ticket unchanged**
@@ -333,7 +333,7 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 
 **FE-AC14 — ETA time displayed accurately on Confirmation popup (Reserved ETA)**
 **Given** the driver has a booked ticket with a specific Reserved Pickup ETA (e.g. 10:05 AM),
-**When** the driver starts the Switch flow and selects a new available ticket/route,
+**When** the driver starts the Switch flow and selects a new available ticket,
 **Then** the Switch confirmation popup's ETA time field matches the original ticket's Reserved Pickup ETA exactly.
 
 ### Analytics
@@ -344,36 +344,36 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 **Then** a "Switch Ticket" event is logged with the correct payload (from-ticket ID, to-ticket ID, timestamp), and no "Cancel" event is logged for this action.
 
 **FE-AC16 — Regression: Unbook ticket flow still works correctly and logs the correct event**
-**Given** the driver has 1 ticket/route booked and analytics/event tracking is available,
+**Given** the driver has 1 ticket booked and analytics/event tracking is available,
 **When** the driver taps "Edit" → "Unbook" → confirms,
 **Then** the Edit Ticket popup shows both Switch and Unbook (unaffected by the new feature), the ticket unbooks successfully and reverts "Edit" back to "Book", the existing Unbook/cancel-type event is logged with the correct payload, and no "Switch Ticket" event is logged for this action.
 
 ### Availability & edge cases
 
 **FE-AC17 — Switch button disabled when no session is available**
-**Given** the driver has 1 booked ticket and no other ticket/route or DB session is currently available to switch to,
+**Given** the driver has 1 booked ticket and no other ticket or DB session is currently available to switch to,
 **When** the driver taps "Edit",
 **Then** the Edit Ticket popup opens with the "Switch" button disabled/greyed out (not tappable), while "Unbook" remains enabled and functional.
 
 **FE-AC18 — Switch button enabled when ≥1 session is available**
-**Given** the driver has 1 booked ticket and at least 1 other ticket/route or DB session is available to switch to,
+**Given** the driver has 1 booked ticket and at least 1 other ticket or DB session is available to switch to,
 **When** the driver taps "Edit" and then "Switch",
 **Then** the "Switch" button is enabled/tappable, and tapping it opens the instructional dialog as expected.
 
 **FE-AC19 — Edit Ticket popup displays correctly when no ticket is available to switch**
-**Given** the driver has 1 ticket/route booked and no other ticket/route or DB session is currently available,
+**Given** the driver has 1 ticket booked and no other ticket or DB session is currently available,
 **When** the driver taps "Edit" and attempts to tap the disabled "Switch" button,
 **Then** the popup opens without error/crash, "Switch" is shown in its disabled/greyed-out style per the final design, tapping it does nothing (the instructional dialog is NOT shown), "Unbook" remains enabled and fully functional, and the overall popup layout/content matches the final design for the no-availability state.
 
 **FE-AC20 — Ticket limit = 1, no ticket booked yet: normal booking confirmation shown**
 **Given** the driver's daily ticket limit is 1 and no ticket has been booked yet,
-**When** the driver taps "Book" on any available ticket/route and confirms,
-**Then** the normal ticket/route booking confirmation popup is shown (not the Switch confirmation popup), the ticket books normally, and its "Book" button changes to "Edit" (per FE-AC1).
+**When** the driver taps "Book" on any available ticket and confirms,
+**Then** the normal ticket booking confirmation popup is shown (not the Switch confirmation popup), the ticket books normally, and its "Book" button changes to "Edit" (per FE-AC1).
 
 **FE-AC21 — Ticket limit = 0 (already booked): Book disabled on other tickets**
 **Given** the driver's ticket limit is 1 and the driver has already booked 1 ticket (remaining limit = 0),
-**When** the driver views other available tickets/routes and the currently booked ticket,
-**Then** the "Book" button on all other tickets/routes is disabled/greyed out, while "Edit" remains available and tappable on the currently booked ticket, allowing Switch or Unbook.
+**When** the driver views other available tickets and the currently booked ticket,
+**Then** the "Book" button on all other tickets is disabled/greyed out, while "Edit" remains available and tappable on the currently booked ticket, allowing Switch or Unbook.
 
 **FE-AC22 — Booking Sessions list: zone fully booked**
 **Given** a zone within the Booking Session has reached full booking capacity,
@@ -386,51 +386,51 @@ Covers `BookingManager.switchGroup` / the `switch-group` API (ALT-1761), tested 
 **Then** that zone/ticket option is shown as disabled, even though unbooked tickets technically remain.
 
 **FE-AC24 — Booking Sessions list: ≥2 zones available**
-**Given** at least 2 zones within the Booking Session have available tickets/routes to switch to,
+**Given** at least 2 zones within the Booking Session have available tickets to switch to,
 **When** the driver navigates to the Booking Sessions screen during the Switch flow,
 **Then** both zones display as selectable with their available options, and tapping "Book" on an option in either zone independently proceeds to the Switch confirmation popup.
 
 **FE-AC25 — Selected session gets booked by another driver before confirm**
-**Given** the driver has selected a new ticket/route and is on the Switch confirmation popup, and another driver books the same ticket/route before this driver confirms,
+**Given** the driver has selected a new ticket and is on the Switch confirmation popup, and another driver books the same ticket before this driver confirms,
 **When** the driver taps "Switch" to confirm,
 **Then** a graceful error message indicates the session is no longer available, the driver is returned to the Booking Sessions screen to pick another option, and the original ticket remains booked and unaffected.
 
 **FE-AC26 — Zone becomes full exactly at the confirm-switch moment**
-**Given** the driver has selected a new ticket/route in a zone with exactly 1 remaining slot, and another driver books that last slot right after this driver taps "Book" but before tapping "Switch" to confirm,
+**Given** the driver has selected a new ticket in a zone with exactly 1 remaining slot, and another driver books that last slot right after this driver taps "Book" but before tapping "Switch" to confirm,
 **When** the driver taps "Switch" to confirm,
 **Then** the confirm fails gracefully with a clear error message (zone now full / session no longer available), the driver returns to the Booking Sessions screen to pick another option, and the original ticket remains booked and unaffected.
 
 **FE-AC27 — Driver switches ticket multiple times (≥3) in one session**
-**Given** the driver has 1 booked ticket and at least 3 other tickets/routes available to switch to sequentially,
+**Given** the driver has 1 booked ticket and at least 3 other tickets available to switch to sequentially,
 **When** the driver performs Switch #1, immediately performs Switch #2 on the newly booked ticket, and then performs Switch #3,
 **Then** each switch succeeds with no restriction or error, none of the switches count against the ticket limit, and the driver still holds exactly 1 booked ticket after all switches.
 
 ### Regression
 
 **FE-AC28 — Unbook flow regression check (Edit Ticket popup)**
-**Given** the driver has at least 1 booked ticket/route,
+**Given** the driver has at least 1 booked ticket,
 **When** the driver taps "Edit" → "Unbook" → confirms,
 **Then** the Edit Ticket popup shows both "Switch" and "Unbook" actions, the unbook dialog is shown (existing flow, unaffected by Switch), and the ticket is unbooked successfully — same behavior as before this feature.
 
 **FE-AC29 — Map button regression check**
-**Given** the driver has at least 1 booked ticket/route,
+**Given** the driver has at least 1 booked ticket,
 **When** the driver taps "Map" on the Booked ticket screen and on the Detail Booking Session screen,
 **Then** the Map screen opens correctly in both cases, unaffected by the new Edit/Switch feature.
 
 ### Feature flag on/off/default
 
 **FE-AC30 — Switch Ticket feature is available when `enable_switch_ticket = true`**
-**Given** `enable_switch_ticket` is `true` for the driver's app config and the driver has at least 1 ticket/route booked,
+**Given** `enable_switch_ticket` is `true` for the driver's app config and the driver has at least 1 ticket booked,
 **When** the driver navigates to the Total Booked/BS screen, taps "Edit", taps "Switch", and completes the flow,
 **Then** the "Edit" button is shown (instead of "Book"), the Edit Ticket popup opens with Switch/Unbook, and the full Switch flow works end-to-end with the switch completing successfully.
 
 **FE-AC31 — Switch Ticket feature is disabled/hidden when `enable_switch_ticket = false`**
-**Given** `enable_switch_ticket` is `false` for the driver's app config and the driver has at least 1 ticket/route booked,
+**Given** `enable_switch_ticket` is `false` for the driver's app config and the driver has at least 1 ticket booked,
 **When** the driver navigates to the Total Booked/BS screen and searches the app for any Switch-related UI,
-**Then** the ticket/route card shows the original pre-feature UI with no Edit/Switch entry point shown anywhere, the existing cancel/unbook flow still works unaffected, and no Switch-related screen or action (Edit Ticket popup, instructional dialog, Switch confirmation) is reachable anywhere in the app.
+**Then** the ticket card shows the original pre-feature UI with no Edit/Switch entry point shown anywhere, the existing cancel/unbook flow still works unaffected, and no Switch-related screen or action (Edit Ticket popup, instructional dialog, Switch confirmation) is reachable anywhere in the app.
 
 **FE-AC32 — Switch Ticket feature behavior when `enable_switch_ticket` uses its default value (unset)**
-**Given** `enable_switch_ticket` is not explicitly configured for the driver's app config (falls back to its default, same as `false`) and the driver has at least 1 ticket/route booked,
+**Given** `enable_switch_ticket` is not explicitly configured for the driver's app config (falls back to its default, same as `false`) and the driver has at least 1 ticket booked,
 **When** the driver navigates to the Total Booked/BS screen,
 **Then** the app behaves identically to the `false` case — no Edit/Switch entry point is shown, the existing cancel/unbook flow still works, and the app behaves stably and predictably with no crash or inconsistent state due to the missing explicit config.
 
