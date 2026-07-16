@@ -37,7 +37,7 @@ Untouched   PUT /booking/{id}/switch-group/{currentItemId}/to/{targetGroup}
            ├─ load session (fail closed → 409)
            ├─ daily time-limit check (412 if over) ──► error, ticket untouched
            ├─ gRPC switchGroupWithModel (swap)
-           └─ on success: pickup ETA + confirmation SMS
+           └─ on success: pickup ETA 
               │
               ▼
          Booking screen reflects new ticket + "switch-ticket" analytics event fired
@@ -84,6 +84,8 @@ Gates the Edit/Switch entry point on the **Booked ticket screen** (Total Booked)
 
 Consul (staging): https://consul-staging.gojitsu.sdm.network/ui/dc1-staging/kv/staging/apps/driverappapi/mobile_app_config/enable_switch_ticket/edit
 
+Don't need to restart the service after updating consult config.
+
 | Value | What the driver sees |
 | --- | --- |
 | `false` **(default)** | Both screens show only the **Unbook** button — no Edit, no Switch entry point at all. |
@@ -92,6 +94,8 @@ Consul (staging): https://consul-staging.gojitsu.sdm.network/ui/dc1-staging/kv/s
 #### `text_no_ticket_to_switch`
 
 Consul (staging): https://consul-staging.gojitsu.sdm.network/ui/dc1-staging/kv/staging/apps/driverappapi/mobile_app_config/text_no_ticket_to_switch/edit
+
+Don't need to restart the service after updating consult config.
 
 Controls the message shown on the **Booking Session screen, in switch mode**, when there is no other group left to switch into:
 
@@ -106,6 +110,7 @@ Controls the message shown on the **Booking Session screen, in switch mode**, wh
 - **Region** — Mongo `item_metadata` (owner `RG_<regionCode>`, scope `APP_CONFIG`); resolved from the driver's **active** row in `driver_regions` (`is_active IS TRUE`).
 - **Warehouse** — same store (owner `WH_<warehouseId>`); resolved from the driver's **currently active assignment** (`assignments`, `is_active IS TRUE AND status <> 'COMPLETED'`) — the current route's warehouse, not a fixed home warehouse. No active assignment → no warehouse-level override applies.
 - **Driver** — same store (owner `DR_<driverId>`) — highest precedence.
+- Don't need to restart the service after updating item_metadata config.
 
 Overrides are managed via the admin-only `PUT /metadata/{uid}/{scope}/{key}`
 
