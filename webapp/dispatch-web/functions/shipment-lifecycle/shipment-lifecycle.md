@@ -1,4 +1,4 @@
-# Shipment Lifecycle Report
+# Shipment Lifecycle
 
 > **App:** Dispatch Web · **Status:** Draft
 > **Shared context:** see [../../README.md](../../README.md)
