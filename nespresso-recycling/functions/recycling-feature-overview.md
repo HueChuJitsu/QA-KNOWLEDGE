@@ -21,7 +21,7 @@ The feature spans four areas:
 | Enablement & config | Turn recycling on per client / region / warehouse; labels, bonus verbiage | [§2](#2-enabling--configuration) |
 | Driver App validation | Barcode / QR validation pop-up when scanning the bag | [§3](#3-driver-app--barcode-validation) |
 | Recipient Page | Show pickup-return status to the recipient | [§4](#4-recipient-page--pickup-return-status) |
-| SMS notifications | Pickup reminder + post-pickup feedback request | [§5](#5-sms-notifications) |
+| SMS notifications | Pickup reminder + post-pickup feedback request | [recycling-sms-notifications.md](recycling-sms-notifications.md) |
 
 ---
 
@@ -129,30 +129,17 @@ under `prod/apps/recipient_api/display_template/`:
 
 ## 5. SMS Notifications
 
-### 5.1 Pickup reminder SMS
+> **Moved to a dedicated doc:** [recycling-sms-notifications.md](recycling-sms-notifications.md)
 
-> Source: *Nespresso — Send SMS to Recipient to Remind*
+Recipient-facing SMS for the recycling flow:
 
-- **Message type:** `INFORM_RECIPIENT_PICKUP_REMINDER` in the `telephonies` table.
-- **Purpose:** notify recipients via SMS when a recycling bag is scheduled for pickup.
-- **Enablement scope:** can be enabled **by default for all clients**, or for **specific
-  clients only**.
+| SMS | Message type | Config |
+|-----|--------------|--------|
+| Pickup reminder | `INFORM_RECIPIENT_PICKUP_REMINDER` | `telephonies` table |
+| Feedback request | `INFORM_RECIPIENT_FEEDBACK_REQUEST` | `telephonies` + `sms_template` / `FEEDBACK_RESPONSE` |
 
-**Conditions to send** (both must be true):
-1. The client **has pickup return enabled** (checked via client configuration).
-2. The shipment **contains a recycling bag** (from shipment metadata / item tags).
-
-When both are met, the system **automatically sends** the SMS using the
-`INFORM_RECIPIENT_PICKUP_REMINDER` template.
-
-### 5.2 Post-pickup feedback request SMS
-
-> Source: *Configuration — Send SMS to Nespresso recycling recipients to ask about their pickup experience*
-
-- **Request:** `telephonies` table, message type `INFORM_RECIPIENT_FEEDBACK_REQUEST` —
-  asks the recipient about their pickup experience.
-- **Response:** after the recipient replies, the auto-response is configured in MongoDB
-  collection `sms_template`, title `FEEDBACK_RESPONSE`.
+See [recycling-sms-notifications.md](recycling-sms-notifications.md) for send conditions,
+enablement scope, and QA notes.
 
 ---
 

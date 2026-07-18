@@ -13,6 +13,7 @@ Functions that form a group live in their own sub-folder under `functions/`.
 | Function | File | Status |
 |----------|------|--------|
 | Recycling Feature — Overview (config + logic) | [functions/recycling-feature-overview.md](functions/recycling-feature-overview.md) | Draft |
+| Recycling — SMS Notifications | [functions/recycling-sms-notifications.md](functions/recycling-sms-notifications.md) | Draft |
 
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
