@@ -1,10 +1,4 @@
-# WAT-2055 — TPA (Third-Party Agreement) Signing Guard
-
-> **Ticket:** [WAT-2055](https://gojitsu.atlassian.net/browse/WAT-2055) — integrate TPA API against a real backend
-> **App:** Linehaul Driver App
-> **Origin:** [MOB-2212](https://gojitsu.atlassian.net/browse/MOB-2212) — delivered TPA guard UI, webview shell, JS message bridge, decline flow, re-sign triggers (against mocked backend)
-> **Follow-up:** [MOB-2776](https://gojitsu.atlassian.net/browse/MOB-2776) — backend-integration for the above
-> **Reference:** [MOB-2543](https://gojitsu.atlassian.net/browse/MOB-2543) — Enriched Specification
+# TPA (Third-Party Agreement) Signing Guard
 
 ---
 
@@ -70,15 +64,3 @@ The guard sits **above tab navigation**, similar to the existing auth guard patt
 - Given a driver in the middle of TPA signing, when the app is backgrounded or network drops, then they return to the TPA screen on next app open
 - Given a driver who previously signed TPA v1, when TPA v2 is published, then the driver is prompted to re-sign on next app open
 - Given a driver whose TPA is expired, when they open the app, then they are prompted to re-sign
-
----
-
-## Related Jira
-
-| Ticket | Type | Description |
-|---|---|---|
-| [WAT-2055](https://gojitsu.atlassian.net/browse/WAT-2055) | Story | Integrate TPA API against real backend (this doc) |
-| [MOB-2212](https://gojitsu.atlassian.net/browse/MOB-2212) | Story | TPA guard UI, webview shell, JS bridge, decline flow, re-sign triggers (mocked backend) |
-| [MOB-2776](https://gojitsu.atlassian.net/browse/MOB-2776) | Story | Backend-integration follow-up to MOB-2212 |
-| [MOB-2543](https://gojitsu.atlassian.net/browse/MOB-2543) | Reference | Enriched Specification |
-| [MOB-2607](https://gojitsu.atlassian.net/browse/MOB-2607) | Reference | Test case updates / additional AC groups |
