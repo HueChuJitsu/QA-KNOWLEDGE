@@ -12,7 +12,7 @@ Web app for the **Driver Linehaul** domain. Per-function documentation lives in 
 
 | Function | File | Status |
 |----------|------|--------|
-| Log-on (Login) | [functions/log-on.md](functions/log-on.md) | Draft |
+| Log-on (Login) | [functions/log-on.md](functions/log-on.md) | Detailed + test suite (MOB-2550) |
 
 > To add a new function: copy [`functions/_template.md`](functions/_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
