@@ -1,93 +1,228 @@
 # Function: Log-on (Login)
 
-> **App:** Linehaul Driver App · **Status:** Draft (some validation rules pending PO confirmation)
-> **Shared context:** see [../README.md](../README.md) — Architecture (§2), DSP Lifecycle (§3),
-> Account Creation Flows (§4).
-
 ## 1. Description
 
-Login screen of the Linehaul Driver App. Drivers are **provisioned** (no self sign-up).
-Supports two driver populations: **DSP Linehaul** and **3P (third-party)**.
+The login screen authenticates **provisioned** Linehaul drivers (no self sign-up).
+Only accounts of type **LINEHAUL** can access the app; DSP, Platform, and IC accounts are
+rejected and pointed to their corresponding driver app.
 
-## 2. Authentication
+Key characteristics:
 
-- **Auth provider:** AWS Cognito
-- **Identifier types accepted:** username, phone number, email
-- **No 2FA** required (including new-device login)
-- **No offline login** mode
+- Drivers are provisioned — **no self-registration** on this screen.
+- Two entry methods: **email/username** and **phone number**.
+- Authentication runs through **Jitsu OAuth2**.
+- **No 2FA** and **no offline login**.
 
-## 3. Validation rules
+---
 
-### Username
-- Required, must not be empty
-- Format pattern: `^[a-zA-Z\s'-]+$` (letters, spaces, hyphens, apostrophes)
-- Maximum length configurable via remote config
+## 2. Login methods
 
-> 🟣 **TBD:** The current pattern does not allow digits or `@`, which conflicts with
-> login by phone/email. PO must confirm the field design. (Open Question #3 in README)
+| Method | Identifier | Notes |
+|---|---|---|
+| Email/Username (default) | email address **or** username | Single field labeled `Username/Email`. Displayed as typed — no masking, no trimming on display. |
+| Phone number | 10-digit US phone | Reached via the **Login with phone number** link. Auto-formatted to `(xxx) xxx-xxxx`. Numeric keyboard only. |
+
+Both methods require a **password** and both trigger the same OAuth2 authentication.
+
+---
+
+## 3. UI elements & placeholders
+
+| Element | Default state |
+|---|---|
+| `Username/Email` field | Placeholder text: **"Username/Email"** |
+| `Password` field | Placeholder text: **"Password"**; input masked as `•••` |
+| Password reveal icon | Toggles password between masked `•••` and plain text |
+| `Login` button | Primary action; has pressed + loading states |
+| `Login with phone number` link | Switches input method to phone |
+| `Forgot password` link | Opens Forgot Password screen |
+| `Clear cache` link | Opens **Delete App** pop-up |
+| Offline banner | Shown only when offline |
+| Sign up link | **Not present / not functional** |
+
+---
+
+## 4. Field validation rules
+
+### Username / Email
+- **Required** — empty + Login → inline error **"Email or username required"**.
+- Accepts letters, spaces, hyphens, apostrophes — e.g. `John O'Brien`, `Mary-Jane`, `user@123` → no format error.
+- **Whitespace is trimmed** before submission; whitespace-only input is treated as empty.
+- Displayed exactly as typed — no masking.
+
+### Phone number (phone method)
+- **Required** — empty + Login → inline error **"Phone Required"**.
+- **Max 10 digits** — the field stops accepting input after the 10th digit.
+- Must match `(xxx) xxx-xxxx` — otherwise inline error **"Invalid Phone Number"**.
+- Auto-formatted to `(xxx) xxx-xxxx` as typed.
+- Numeric keyboard only — no alphabetic keyboard.
 
 ### Password
-- Required, must not be empty
-- **No complexity rules at login** (complexity is enforced only in the Reset Password
-  flow — defined in a separate ticket)
+- **Required** — empty + Login → inline error **"Password Required"**.
+- No complexity rules enforced **at login** (complexity lives in the Reset Password flow).
+- Masked by default; toggle via reveal icon.
 
-## 4. Login eligibility
+---
 
-To log in successfully, an account must:
+## 5. Authentication flow
 
-1. Have `account_type = LINEHAUL` (DSP / Platform / IC drivers are blocked)
-2. Have `account_status = enabled` in Cognito
-3. Match a valid DSP Driver state — see the state machine in [README §3](../README.md#3-dsp-driver-lifecycle--states)
+```
+Driver enters identifier + password → taps Login
+        ↓
+Jitsu OAuth2 authentication is triggered
+        ↓
+Backend validates:
+  1. credentials are correct
+  2. account_type == LINEHAUL          → else reject (§6)
+  3. account state allows login        → else reject (§7)
+        ↓
+Success → navigate to the state-appropriate screen (§7)
+Failure → inline error or Authentication Error pop-up (§8)
+```
 
-> **Principle:** Only the **deleted** state (`QUIT` + `In DSP? = No`) blocks login.
-> All other states allow login; restricting operational actions is handled by app-side
-> gating. **Login ≠ Active.**
+- **Debounce:** rapid/double taps send **only one** auth request; the button is disabled/debounced after the first tap.
+- **Loading state:** shown while awaiting the backend response.
 
-## 5. Authentication Error pop-up
+---
 
-A **single unified message** is used for all auth failures, to avoid leaking information:
+## 6. Account-type gating
 
-> *"Your session expired or someone used your account to log in. Please log in again."*
+Only **LINEHAUL** accounts may log in. All other account types are rejected.
 
-## 6. Session management
+| Account type | Result | Message |
+|---|---|---|
+| `LINEHAUL` | ✅ Login proceeds (subject to §7) | — |
+| `DSP` | ❌ Rejected | *"Invalid account. Please sign in using your corresponding driver app."* |
+| `PLATFORM` | ❌ Rejected | *"Invalid account. Please sign in using your corresponding driver app."* |
+| `IC` (Independent Contractor) | ❌ Rejected | *"Invalid account. Please sign in using your corresponding driver app."* |
 
-- **Single session policy** — login from another device forces logout on the current device
-- **Token TTL** — 7 days (TBD — pending Backend confirmation, Open Question #4)
-- **No offline tokens** — re-authentication required when the token is invalidated
+> ⚠️ **To confirm with PO:** the spec describes two different rejection messages for a DSP account — an **Authentication Error pop-up** with *"Invalid login credentials"* in one place, and the inline *"Invalid account…"* message in another. Confirm which is correct.
 
-## 7. Supported hyperlinks
+---
 
-| Link | Purpose |
+## 7. Account status → login-destination matrix
+
+Login eligibility and post-login destination depend on the DSP driver state
+(see [README §3 — DSP Driver Lifecycle](../README.md#3-dsp-driver-lifecycle--states)).
+
+| Status | Background | In DSP? | Contract | Result | Destination screen |
+|---|---|---|---|---|---|
+| `CREATED` | `PENDING` | Yes | — | ✅ Login | **3-session screen** |
+| `BACKGROUND_APPROVED` | `MANUAL_APPROVED` | Yes | Not signed | ✅ Login | **Contract session screen** |
+| `BACKGROUND_APPROVED` | `MANUAL_APPROVED` | Yes | Signed | ✅ Login | **Active assignment screen** |
+| `QUIT` | `MANUAL_APPROVED` | Yes | Signed | ✅ Login | **Active screen** |
+| `QUIT` | `MANUAL_APPROVED` | **No** (deleted) | — | ❌ Blocked | *"Invalid account…"* → Login screen |
+| `SUSPENDED` | `MANUAL_APPROVED` | Yes | — | ✅ Login | **Contract session screen** |
+| `CREATED` | `NULL` | No (IC) | — | ❌ Blocked | *"Invalid account…"* → Login screen |
+
+> **Principle:** Only the **deleted** state (`QUIT` + In DSP = No) and **non-LINEHAUL** account types block login. All other states log in; restricting operational actions is handled by app-side gating. **Login ≠ Active.**
+
+---
+
+## 8. Error & message catalog
+
+### Inline field errors
+
+| Trigger | Message |
 |---|---|
-| Forgot password | Trigger password reset flow (separate ticket) |
-| Login with phone number | Switch to phone-based login |
-| Clear cache | Wipe app cache (tokens, offline data) |
-| Tap logo 7× | Open environment switcher (dev/staging/prod) — QA/dev only |
+| Empty username/email | `Email or username required` |
+| Empty phone | `Phone Required` |
+| Invalid phone format | `Invalid Phone Number` |
+| Empty password | `Password Required` |
+| Invalid credentials | `Invalid login credentials` |
+| Wrong account type / deleted account | `Invalid account. Please sign in using your corresponding driver app.` |
 
-## 8. Not supported
+### Authentication Error pop-up
 
-- ❌ Sign up (drivers are provisioned, no self-registration)
+Standard shape:
 
-## 9. Account lockout
+```
+Title:   Authentication error
+Content: <see below>
+Button:  OK   → returns to Login screen
+```
 
-> 🟣 **TBD** — pending PO + Cognito User Pool configuration. (Open Question #5)
+| Scenario | Content |
+|---|---|
+| Offline login attempt | `Unknown error` |
+| Expired / invalid token on open | `Unknown error` |
+| Force logout (multi-device) | `Unknown error` |
+| Token expires mid-session | `Unknown error` |
+| Account locked out | `Account is locked due to many failed attempts. Retry after <N> mins` |
 
-## 10. QA / Test notes
 
-> Fill in happy/edge cases during testing. Suggested cases from the spec:
+---
 
-- ✅ Valid login with username / phone / email (account `LINEHAUL` + `enabled`)
-- ❌ `deleted` account (`QUIT` + In DSP No) → cannot login / force logout
-- ❌ `account_type` ≠ LINEHAUL (DSP / Platform / IC) → blocked
-- Single session: login on device B → device A is force-logged-out, shows pop-up §5
-- Empty username / empty password → required-field validation
-- Username containing digits or `@` → verify against current pattern (⚠️ conflicts with phone/email — TBD)
-- 🐛 **MOB-2606:** crash when logging in with a non-existent gojitsu.com account — verify it is fixed
+## 9. Session management
 
-## 11. Related Jira
+- **Single-session policy** — logging in on Device B **force-logs-out** Device A. Device A shows the Authentication Error pop-up, then returns to the Login screen.
 
-- **MOB-2004** — Linehaul Driver App (epic)
-- **MOB-2334** — Frontend OAuth (✅ Done)
-- **MOB-2543** — Enriched auth spec (reference)
-- **MOB-2550** — Backend DSP-type gating (🟡 Blocked)
-- **MOB-2606** — Login crash bug (🔴 To Do)
+---
+
+## 10. Token & auto-login
+
+| Scenario | Behavior |
+|---|---|
+| Valid token stored, app reopened | Login screen **skipped** → navigate directly to Contract/Active screen. No error. |
+| Expired/invalid token on open | Authentication Error pop-up (`Unknown error`) → OK → Login screen |
+| Token expires mid-session | Next authenticated action → Authentication Error pop-up → OK → Login screen |
+
+- Token lifetime is governed by `default_access_token_expired_duration` (backend config).
+- **No offline tokens** — re-authentication is required when the token is invalidated.
+
+---
+
+## 11. Account lockout
+
+Configured via three backend keys:
+
+| Config | Meaning |
+|---|---|
+| `max_failed_login_attempts` | Number of wrong-password attempts (N) before lockout |
+| `login_failed_time_window_sec` | Window within which the N failures must occur; also the retry-after duration surfaced to the user |
+| `login_failed_count_ttl_sec` | TTL for the failed-attempt counter |
+
+**Behavior:** entering the wrong password N times within the window temporarily locks the account and shows the Authentication Error pop-up:
+
+```
+Title:   Authentication error
+Content: Account is locked due to many failed attempts. Retry after <login_failed_time_window_sec> mins
+Button:  OK
+```
+
+---
+
+## 12. Offline behavior
+
+- **Offline banner** at the bottom of the Login screen: yellow background · white text **"Offline - Not connected"** · upward arrow icon (↑).
+- **Login is blocked offline** — any login attempt → Authentication Error pop-up (`Unknown error`) → OK → Login screen.
+- There is **no offline login** mode.
+
+---
+
+## 13. Hyperlinks & navigation
+
+| Link / element | Action |
+|---|---|
+| `Forgot password` | Opens Forgot Password screen |
+| `Login with phone number` | Switches input method to phone |
+| `Clear cache` | Opens **Delete App** pop-up |
+| Sign up | **Not present / not functional** |
+
+---
+
+## 14. Login button behavior
+
+- **Debounce:** double/spam taps → exactly **one** auth request; button disabled/debounced after the first tap.
+- **Press & loading:** pressed state on touch; on release the request fires and a loading state is shown until the response returns.
+- **Phone keyboard:** tapping the phone number field shows a numeric keyboard only (not alphabetic/full).
+
+---
+
+## 15. Internationalization (i18n)
+
+The login screen is **English-only**, even on a non-English device:
+
+- With device language set to Spanish, all UI text remains English:
+  placeholders `Username/Email` / `Password`, button `Login`, links `Login with phone number` / `Forgot password`.
+- Validation errors also stay English: `Email or username required`, `Password Required`.
