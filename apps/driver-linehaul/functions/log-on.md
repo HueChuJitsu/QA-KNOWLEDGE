@@ -96,7 +96,7 @@ Only **LINEHAUL** accounts may log in. All other account types are rejected.
 | `PLATFORM` | ❌ Rejected | *"Invalid account. Please sign in using your corresponding driver app."* |
 | `IC` (Independent Contractor) | ❌ Rejected | *"Invalid account. Please sign in using your corresponding driver app."* |
 
-> ⚠️ **Discrepancy:** in the E2E DSP flow the rejection is shown via an **Authentication Error pop-up** with content *"Invalid login credentials"*, whereas the field-level DSP case shows the inline *"Invalid account…"* message.
+> ⚠️ **To confirm with PO:** the spec describes two different rejection messages for a DSP account — an **Authentication Error pop-up** with *"Invalid login credentials"* in one place, and the inline *"Invalid account…"* message in another. Confirm which is correct.
 
 ---
 
