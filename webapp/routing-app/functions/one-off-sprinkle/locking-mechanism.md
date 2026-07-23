@@ -27,15 +27,9 @@ keywords:
 
 # ===== TAXONOMY =====
 user_types:
-  - QA
   - Dispatcher / Admin
-  - System (automatic sprinkling)
+  - Warehouse staff
 system_touchpoints:
-  - dao (LockDAO, LockRD)
-  - data-orchestrator (RedeliveryManager, RedeliveryManagerV2, AssignmentManager)
-  - sortation-bizlogic (SprinklingManager)
-  - inbound-api-grpc
-  - sprinkle-bizlogic (SprinklingCacheManager, SprinklingSolutionSelector)
 
 # ===== EXTERNAL SOURCES =====
 confluence_refs: []
