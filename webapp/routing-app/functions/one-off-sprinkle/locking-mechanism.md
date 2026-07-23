@@ -184,15 +184,6 @@ figma_refs: []
 
 - [ALT-1881](https://gojitsu.atlassian.net/browse/ALT-1881) — Implement locking mechanism during automatic shipment sprinkling
 
-### Code / PRs
-
-| Repo | File | Notes |
-|---|---|---|
-| `dao` | `LockDAO.java`, `LockRD.java` | Shared shipment-level lock, PR [#2081](https://github.com/gojitsucom/dao/pull/2081) |
-| `data-orchestrator` | `RedeliveryManager.java`, `RedeliveryManagerV2.java` | Single-shipment add + bulk redelivery, PR [#2768](https://github.com/gojitsucom/data-orchestrator/pull/2768) |
-| `data-orchestrator` | `AssignmentManager.java` | Route-level lock (`LOCK-ONE-OFF-SPRINKLE-`) used by bulk redelivery |
-| `sortation-bizlogic` | `SprinklingManager.java` | Auto-sprinkle (`oneOffSprinkleV2`) — shares both the shipment lock and the route lock |
-| `sprinkle-bizlogic` | `SprinklingCacheManager.java`, `SprinklingSolutionSelector.java` | Zone lock for "Select Solution" |
 
 ### Related features
 
