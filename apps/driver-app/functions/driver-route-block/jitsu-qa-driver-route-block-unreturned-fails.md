@@ -8,7 +8,7 @@
 - ✓ How the open-routes window was widened from ±2 days to −30/+2 days, and how the block gate reuses that same range
 - ✓ The config/feature flags, resolution flow, edge cases, and reporting risks a tester must check before rollout
 
-*Source: Jira MOB-2955 & MOB-3109 (Epic MOB-3108 "2026Q3 Unresolved Dropoff Fails")
+*Source: Jira MOB-2955 & MOB-3109 (Epic MOB-3108 "2026Q3 Unresolved Dropoff Fails")*
 
 ---
 
@@ -71,7 +71,7 @@
 1. Driver fails a drop-off (`dropoff_failed`) on an in-scope route and dismisses both return & reattempt prompts.
 2. `GET /route-block` (called as the driver) now returns `is_blocked = true`, the stop listed under `offending_routes[].stop_ids`, `count = 1`, `outstanding_fail_count = 1`.
 3. Driver returns the package; outbound staff marks it `RETURNED` (succeeded return stop) — **or** a succeeded reattempt drop-off occurs.
-4 `GET /route-block` reflects the change automatically (no manual refresh): the resolved stop drops off the list; when all clear, `is_blocked = false`, `outstanding_fail_count = 0`, `offending_routes = []`.
+4. `GET /route-block` reflects the change automatically (no manual refresh): the resolved stop drops off the list; when all clear, `is_blocked = false`, `outstanding_fail_count = 0`, `offending_routes = []`.
 
 ### Detection state machine (per shipment, on an in-scope route)
 
@@ -93,7 +93,7 @@
 - **Failed reattempt** with no succeeded return → **still blocks**.
 - **Dedup:** same shipment on two routes → counted once in `outstanding_fail_count`, but **both** routes listed in `offending_routes`.
 - **Fail-safe:** missing/invalid `launch_date` → **not blocked** 
-- **Flag priority:** `driver_route_block` resolves **warehouse → region → app-default (`driverappapi`) → missing config → **not blocked**
+- **Flag priority:** `driver_route_block` resolves **warehouse → region → app-default (`driverappapi`)**; missing config → **not blocked**.
 - **Tutorial shipments** are excluded from the count.
 - **Open-routes range** resolution: per-region in item_metadata → Consul `driverappapi/open_assignments_range` → built-in default. Forward window stays +2 days.
 
@@ -182,7 +182,60 @@
 
 ---
 
-## 6. Related Tickets & References
+## 6. Database Queries
+
+> Detection runs on **batched DAO projections** (`AssignmentDAO.listMiniByDriver` + `StopDAO.listMiniByAssignmentsAndTypes`), ~2 queries regardless of route/stop volume. The open-routes list uses `AssignmentDAO.listByDriver(driverId, start, end, excludedStatuses)`, which excludes `COMPLETED` **in SQL** (no fetch-all-then-filter).
+>
+> Use the query below to reproduce the block gate against the DB: outstanding (still-held) shipments for a driver, from a given `launch_date`. Set `driver_id` and `launch_date` in the `params` CTE. It mirrors the app logic — in-scope routes (non-`COMPLETED`, non-`TUTORIAL`, within window) → held evidence (FAILED drop-off or open return, on routes dated ≥ `launch_date`) → minus any shipment with a SUCCEEDED reattempt/return anywhere in the window.
+
+```sql
+WITH params AS (
+  SELECT 311607::bigint AS driver_id, DATE '2026-07-22' AS launch_date   -- "from" date
+),
+routes AS (
+  SELECT a.id, a.label, a.warehouse_id, a.region_code,
+         (a.predicted_start_ts AT TIME ZONE 'UTC'
+            AT TIME ZONE COALESCE(a.timezone,'America/Chicago'))::date AS route_date
+  FROM assignments a, params p
+  WHERE a.driver_id = p.driver_id
+    AND a._deleted IS NOT TRUE
+    AND (a.status IS NULL OR a.status <> 'COMPLETED')
+    AND ('TUTORIAL' <> ALL(a.aggregated_tags) OR a.aggregated_tags IS NULL)
+    AND a.predicted_start_ts >= (p.launch_date - 1)::timestamp
+    AND a.predicted_start_ts <= now() + interval '1 day'
+),
+route_stops AS (
+  SELECT s.id, s.shipment_id, s.assignment_id, s.type, s.status
+  FROM stops s
+  WHERE s.assignment_id IN (SELECT id FROM routes)
+    AND s.type IN ('deliverShipment','returnShipment')
+    AND s._deleted IS NOT TRUE
+    AND s.shipment_id IS NOT NULL
+),
+evidence AS (                       -- held: only on routes dated >= the "from" date
+  SELECT rs.*
+  FROM route_stops rs
+  JOIN routes r ON r.id = rs.assignment_id, params p
+  WHERE r.route_date >= p.launch_date
+    AND ( (rs.type = 'deliverShipment' AND rs.status = 'FAILED')
+       OR (rs.type = 'returnShipment'  AND (rs.status IS NULL
+                                            OR rs.status NOT IN ('SUCCEEDED','DISCARDED'))) )
+),
+resolved AS (                       -- succeeded reattempt/return anywhere in the window
+  SELECT DISTINCT shipment_id
+  FROM route_stops
+  WHERE status = 'SUCCEEDED' AND type IN ('deliverShipment','returnShipment')
+)
+SELECT r.label AS route_ref, e.assignment_id AS route_id, e.shipment_id,
+       e.id AS stop_id, e.type AS stop_type, e.status AS stop_status
+FROM evidence e
+JOIN routes r ON r.id = e.assignment_id
+WHERE e.shipment_id NOT IN (SELECT shipment_id FROM resolved)
+;
+```
+---
+
+## 7. Related Tickets & References
 
 | Type | Link | Description |
 |---|---|---|
@@ -192,8 +245,8 @@
 | Jira Story | [MOB-2956](https://gojitsu.atlassian.net/browse/MOB-2956) | [FE] Driver route block — Driver app enforcement (consumes the signal) |
 | Jira Story | [MOB-2987](https://gojitsu.atlassian.net/browse/MOB-2987) | Auto-create return stops for certain shipment statuses (worker; block→resolve QA Sections G/I/J) |
 | Config (Consul) | `apps/driverappapi/route_block/launch_date`, `driverappapi/open_assignments_range`, `late_activation_hours = 720` | Feature configuration |
-| Feature flags | `driver_route_block` | Enablement (by warehouse/region/app-default) |
-| `open_assignments_range` (item_metadata `APP_CONFIG`)|Enablement (by region) |
+| Feature flag | `driver_route_block` | Enablement (by warehouse / region / app-default) |
+| Feature flag | `open_assignments_range` (item_metadata `APP_CONFIG`) | Open-routes range enablement (by region) |
 
 ---
 
