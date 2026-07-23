@@ -12,19 +12,6 @@
 
 ---
 
-## Table of Contents
-
-1. Overview
-2. Key Terminology
-3. System / Flow Description
-4. Environment URLs & Access
-5. Test Scenarios
-6. Edge Cases & Known Issues
-7. Database Queries
-8. Related Tickets & References
-
----
-
 ## 1. Overview
 
 > When a driver marks a stop drop-off failed, they are prompted to **return** the package or **reattempt** delivery. Drivers sometimes dismiss both, leaving a stop stuck in `dropoff_failed` with no follow-up — the driver still physically holds the package. Separately, some shipments are pulled from a route (`unroute` event) and can no longer be marked failed/succeeded by the driver, but still need returning. This feature gives the Driver app a reliable server-side signal (`is_blocked`) so a driver cannot take a **new** route until those held packages are returned.
@@ -184,10 +171,6 @@
 
 ## 6. Database Queries
 
-> Detection runs on **batched DAO projections** (`AssignmentDAO.listMiniByDriver` + `StopDAO.listMiniByAssignmentsAndTypes`), ~2 queries regardless of route/stop volume. The open-routes list uses `AssignmentDAO.listByDriver(driverId, start, end, excludedStatuses)`, which excludes `COMPLETED` **in SQL** (no fetch-all-then-filter).
->
-> Use the query below to reproduce the block gate against the DB: outstanding (still-held) shipments for a driver, from a given `launch_date`. Set `driver_id` and `launch_date` in the `params` CTE. It mirrors the app logic — in-scope routes (non-`COMPLETED`, non-`TUTORIAL`, within window) → held evidence (FAILED drop-off or open return, on routes dated ≥ `launch_date`) → minus any shipment with a SUCCEEDED reattempt/return anywhere in the window.
-
 ```sql
 WITH params AS (
   SELECT 311607::bigint AS driver_id, DATE '2026-07-22' AS launch_date   -- "from" date
@@ -236,17 +219,7 @@ WHERE e.shipment_id NOT IN (SELECT shipment_id FROM resolved)
 ---
 
 ## 7. Related Tickets & References
-
-| Type | Link | Description |
-|---|---|---|
-| Jira Epic | [MOB-3108](https://gojitsu.atlassian.net/browse/MOB-3108) | 2026Q3 Unresolved Dropoff Fails — MOB |
-| Jira Story | [MOB-2955](https://gojitsu.atlassian.net/browse/MOB-2955) | Driver route block for unreturned fails — Backend detection & API (this doc) |
-| Jira Story | [MOB-3109](https://gojitsu.atlassian.net/browse/MOB-3109) | Display open routes up to 30 days in driver app (this doc) |
-| Jira Story | [MOB-2956](https://gojitsu.atlassian.net/browse/MOB-2956) | [FE] Driver route block — Driver app enforcement (consumes the signal) |
-| Jira Story | [MOB-2987](https://gojitsu.atlassian.net/browse/MOB-2987) | Auto-create return stops for certain shipment statuses (worker; block→resolve QA Sections G/I/J) |
-| Config (Consul) | `apps/driverappapi/route_block/launch_date`, `driverappapi/open_assignments_range`, `late_activation_hours = 720` | Feature configuration |
-| Feature flag | `driver_route_block` | Enablement (by warehouse / region / app-default) |
-| Feature flag | `open_assignments_range` (item_metadata `APP_CONFIG`) | Open-routes range enablement (by region) |
+Confluent: https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2649194499/Driver+route+block
 
 ---
 
