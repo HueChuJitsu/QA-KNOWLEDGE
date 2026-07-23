@@ -1,20 +1,11 @@
-# MOB-2722 — Linehaul Driver Auto-Credentialing via NetSuite
-
-Ticket: [MOB-2722](https://gojitsu.atlassian.net/browse/MOB-2722) | Status: **Rollout Ready** | Assignee: Thuan Nguyen
-
----
+# Auto-Create Carrier and Driver
 
 ## 1. Overview
 
 A feature that automatically scans NetSuite daily and creates LINEHAUL driver accounts without any manual intervention.
 Drivers assigned to upcoming loads will have an account ready to log in to the Linehaul Driver App before the pickup date.
 
-| Attribute | Value |
-| --- | --- |
-| Feature | Linehaul Driver Auto-Credentialing via NetSuite |
-| Affected services | `worker-linehaul-checker` |
-| Related tickets | [MOB-2722](https://gojitsu.atlassian.net/browse/MOB-2722) |
-| Confluence doc | [Linehaul Driver Auto-Credentialing — Configuration Guide](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2578645008) |
+**Confluence doc:** [Linehaul Driver Auto-Credentialing — Configuration Guide](https://gojitsu.atlassian.net/wiki/spaces/ENG/pages/2578645008)
 
 ---
 
@@ -56,16 +47,6 @@ for each linehaul in window:
 ```
 
 **Important**: If `driverPhone` is blank → the entire flow is skipped before `LinehaulDriverManager` is called. No carrier is created, no driver is created, and no Slack message is sent.
-
-### 2.4 Courier model (`Courier.java`)
-
-```
-type  : PLATFORM | DSP | LINEHAUL   ← LINEHAUL is the new type added in MOB-2722
-platform : string
-company  : string (carrier name)
-status   : string
-regions  : List<String>
-```
 
 ---
 
