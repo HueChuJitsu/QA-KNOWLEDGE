@@ -1,106 +1,190 @@
-# Locking Mechanism: Sprinkle / Redelivery / Add-shipment
+---
+# ===== IDENTITY =====
+feature: one-off-sprinkle-locking-mechanism
+title: Locking Mechanism — Sprinkle / Redelivery / Add-shipment
+domain: routing-app
+sub_domain: one-off-sprinkle
+schema_version: 1.0
 
-> Related ticket: [ALT-1881](https://gojitsu.atlassian.net/browse/ALT-1881) — Implement locking mechanism during automatic shipment sprinkling
+# ===== STATE =====
+status: active
+maturity: evolving                      # dev branch depends on an unreleased dao SNAPSHOT — see §6
+maintainer: huong.pham
+
+# ===== SEARCH & DISCOVERY =====
+keywords:
+  - locking mechanism
+  - lock
+  - race condition
+  - one-off sprinkle
+  - auto-sprinkle
+  - redelivery
+  - bulk redelivery
+  - shipment lock
+  - route lock
+  - assignment lock
+  - ALT-1881
+
+# ===== TAXONOMY =====
+user_types:
+  - QA
+  - Dispatcher / Admin
+  - System (automatic sprinkling)
+system_touchpoints:
+  - dao (LockDAO, LockRD)
+  - data-orchestrator (RedeliveryManager, RedeliveryManagerV2, AssignmentManager)
+  - sortation-bizlogic (SprinklingManager)
+  - inbound-api-grpc
+  - sprinkle-bizlogic (SprinklingCacheManager, SprinklingSolutionSelector)
+
+# ===== EXTERNAL SOURCES =====
+confluence_refs: []
+
+figma_refs: []
+---
+
+# Locking Mechanism — Sprinkle / Redelivery / Add-shipment
+
+> **Scope** — The per-shipment and per-route locks that stop **auto-sprinkle**, **add single shipment to redelivery**, and **bulk redelivery (API v3)** from processing the same shipment or route at the same time. Out of scope: the separate region/zone lock used by **"Select Solution"** in Routing Admin — mentioned only for context in §5.
+
 > Source: code read from the `dev` branch (2026-07-22) across 5 repos — `dao`, `data-orchestrator`, `sortation-bizlogic`, `inbound-api-grpc`, `sprinkle-bizlogic` — cross-checked against real Datadog logs.
-
-## General idea
-
-When the system wants to touch **a shipment** to process it, it "reserves" that shipment with a temporary lock for a few seconds up to ~60 seconds. While the lock is held, **no other action is allowed to touch the same shipment at the same time**. Once processing finishes, the lock is released right away.
-
-Three actions commonly compete to process the same shipment:
-
-1. **Auto-sprinkle** (`oneOffSprinkleV2`) — the system automatically assigns a shipment onto an existing route the moment it's scanned at the warehouse, with no human action involved.
-2. **Add single shipment to redelivery** (`RedeliveryManager.addShipment`) — a staff member/dispatcher manually adds a shipment to redelivery (re-assigns it to a route).
-3. **Bulk redelivery / API v3** (`RedeliveryManagerV2.redeliveryMultiShipment`) — same as #2 but for many shipments at once. HTTP endpoint: `POST redelivery/redelivery/multiple/v3` (service `dataorch`).
-
-There's also **"Select Solution"** (dispatcher/admin approving a whole new batch of routes for a region in Routing Admin) — this uses a separate lock, rarely relevant to day-to-day testing; see section 4.
 
 ---
 
-## 1. Lock per SHIPMENT (most important for QA)
+## 1. Actors & Systems
 
-- Shared across all 3 actions: auto-sprinkle, add single shipment, bulk redelivery — they all fight over the same "reservation book" (key: `REDELIVERY:SH_<shipmentId>`, TTL ~60s, implemented in the shared `dao` library).
-- If a shipment is already being held by one action, another action calling **at the same time** gets rejected — two actions can never process the same shipment simultaneously.
+- **Auto-sprinkle** (`oneOffSprinkleV2`) — system automatically assigns a shipment onto an existing route the moment it's scanned at the warehouse; no human action involved.
+- **Add single shipment to redelivery** (`RedeliveryManager.addShipment`) — staff/dispatcher manually adds one shipment to redelivery (re-assigns it to a route).
+- **Bulk redelivery / API v3** (`RedeliveryManagerV2.redeliveryMultiShipment`) — staff/dispatcher does the same as above for many shipments at once. Endpoint: `POST redelivery/redelivery/multiple/v3` (service `dataorch`).
+- **Select Solution** (dispatcher/admin, Routing Admin) — approves a whole new batch of routes for a region; uses a separate lock, rarely relevant to day-to-day testing (§5).
+- **Lock keys** (shared `dao` library, cache-based reservations — not DB tables) — see §4 for the exact keys and TTLs.
 
-**What each blocked action actually returns:**
+---
+
+## 2. Business Rules
+
+### 2.1. Per-shipment lock (most important for QA)
+
+**Block when ANY condition is true:**
+
+| # | Condition |
+|---|---|
+| B1 | Another action already holds `REDELIVERY:SH_<shipmentId>` for this shipment (TTL ~60s) |
+
+**Core rule**: Two actions can never process the same shipment at the same time — whichever action acquires `REDELIVERY:SH_<shipmentId>` first wins; the other is blocked outright, not queued.
+
+### 2.2. Per-route (assignment) lock
+
+**Block when ANY condition is true:**
+
+| # | Condition |
+|---|---|
+| B1 | Auto-sprinkle or bulk redelivery already holds `LOCK-ONE-OFF-SPRINKLE-<assignmentId>` for the target route (TTL 3–30s) |
+
+**Core rule**: Even two *different* shipments competing for the same route are serialized. Shared only between **auto-sprinkle** and **bulk redelivery** — single-shipment add does not use this lock at all.
+
+### 2.3. Special Cases
+
+- **Select Solution** uses a separate, region-scoped lock (`sprinkling-lock-<assignmentId>` and zone lock `sprinkling-lock-<region>-<zone>`) so auto-sprinkle can't modify routes while a batch is being approved. QA typically only encounters this when testing the Routing Admin screen — see §5.
+
+---
+
+## 3. Workflow
+
+1. An action (auto-sprinkle / add single shipment / bulk redelivery) attempts to acquire the per-shipment lock `REDELIVERY:SH_<shipmentId>`.
+2. If it's already held by another action → blocked immediately; the response differs per action (see table below). Single-add and bulk redelivery do not retry; auto-sprinkle retries on the next scan/attempt.
+3. If acquired, **auto-sprinkle** and **bulk redelivery** additionally attempt to acquire the per-route lock `LOCK-ONE-OFF-SPRINKLE-<assignmentId>` for the target route (single-shipment add skips this step — see §2.2).
+4. If the route lock is already held → that route is skipped/blocked for this attempt only (§2.2), the shipment lock from step 1 is still released normally.
+5. The action processes the shipment/route.
+6. Both locks are released immediately once processing finishes.
+
+**What each blocked action actually returns (step 2):**
 
 | Blocked action | Response returned | Shows up in Datadog? |
 |---|---|---|
-| Add single shipment | HTTP 400, message: `"Shipment is being added as redelivery"` | ✅ Yes — see "Checking Datadog" below |
-| Bulk redelivery (API v3) | That shipment's entry in the response has `"message": "Shipment is updating"`; the rest of the batch still processes normally (overall HTTP 200) | ❌ No — it only exists in the JSON response, it's never logged |
-| Auto-sprinkle | No error surfaced anywhere (it's automatic, no human waiting on it) — the system logs it and skips that shipment for this attempt; it will be retried on the next scan/attempt | ✅ Yes |
+| Add single shipment | HTTP 400, message: `"Shipment is being added as redelivery"` | ✅ Yes — see §6 Gotchas |
+| Bulk redelivery (API v3) | That shipment's entry in the response has `"message": "Shipment is updating"`; the rest of the batch still processes normally (overall HTTP 200) | ❌ No — only exists in the JSON response, never logged |
+| Auto-sprinkle | No error surfaced anywhere (fully automatic, no human waiting) — the system logs it and skips that shipment for this attempt; retried on the next scan | ✅ Yes |
+
+**What happens when the route lock (step 3/4) is held:**
+
+- Bulk redelivery returns `"message": "Assignment is updating"` for shipments targeting that route.
+- Auto-sprinkle: that route is excluded from the candidate list for this attempt.
 
 ---
 
-## 2. Lock per ROUTE (assignment)
+## 4. Data Model
 
-- Besides the per-shipment lock, the system also locks the specific **route/assignment** the shipment is being placed onto.
-- Shared only between **auto-sprinkle** and **bulk redelivery** (single-shipment add does NOT use this lock).
-- Held very briefly, just a few seconds (3–30s) — just long enough to check/modify that route.
-- If the route is already locked, the other action skips it:
-  - Bulk redelivery returns `"message": "Assignment is updating"` for shipments targeting that route.
-  - Auto-sprinkle: that route is excluded from the candidate list for this attempt.
+> These are cache-based lock reservations (shared `dao` library), not database tables.
 
-**Why a separate lock for the route:** even if two different shipments are involved, if both are competing for the **same route**, it still has to be blocked — otherwise the route could get overloaded, or two processes could modify it at once and corrupt data.
-
----
-
-## 3. Lock summary table
+### Lock keys
 
 | Lock type | Key | TTL | Used by |
 |---|---|---|---|
 | Per shipment | `REDELIVERY:SH_<shipmentId>` | ~60s | Auto-sprinkle, Add single shipment, Bulk redelivery |
 | Per route (one-off) | `LOCK-ONE-OFF-SPRINKLE-<assignmentId>` | 3–30s | Auto-sprinkle, Bulk redelivery |
+| Region (Select Solution) | `sprinkling-lock-<assignmentId>` | — | Select Solution |
+| Zone (Select Solution) | `sprinkling-lock-<region>-<zone>` | — | Select Solution |
 
 ---
 
-## 4. Third lock type (rarely relevant to daily testing): "Select Solution"
+## 5. Related Behaviors
 
-When a dispatcher/admin clicks **"Select Solution"** to approve a whole new batch of routes for a region in Routing Admin, the system locks that entire region while it's being approved (separate keys: `sprinkling-lock-<assignmentId>` and a zone lock `sprinkling-lock-<region>-<zone>`), so auto-sprinkle can't jump in and modify routes that are currently being approved.
-
-QA typically only encounters this when testing the **Routing Admin** screen — it's unrelated to day-to-day redelivery/sprinkle test cases.
-
----
-
-## 5. Checking Datadog
-
-⚠️ **The correct service tag is `dataorch`**, not `data-orchestrator`.
-
-### Can be found in Datadog
-
-The **single-shipment add blocked by lock** case — has a real log entry (level `error`):
-
-```
-service:dataorch "Cannot obtain lock for redelivery shipment ID <id>"
-```
-
-The **auto-sprinkle blocked by the route/assignment lock** case also has a real log entry — service `inbound-api`, not `dataorch`, logged by `SprinklingManager`/`SortInfoManager` (thread context is whatever triggers a scan, e.g. `GET /info/<shipmentId>`, since auto-sprinkle runs as a side-effect of that call rather than its own endpoint):
-
-```
-service:inbound-api "Error while sprinkling shipment ID <shipmentId>"
-service:inbound-api "com.axlehire.sortation.bizlogic.exception.RetryableException: Failed to lock for assignment <assignmentId>"
-```
-
-Stack trace confirms the code path: `SprinklingManager.doOneOffSprinkleV2` → `SprinklingManager.oneOffSprinkleV2WithRetry` → `SortInfoManager.lambda$scanInbound$38`. Before this final failure, look for `warn`-level `retry one off sprinkling for shipment <id> at <region>` lines — the retry loop runs a few times (observed: 3 retries, ~150-250ms apart) before giving up and logging the error above.
-
-### Cannot be found in Datadog
-
-The two bulk-redelivery messages — `"Shipment is updating"` and `"Assignment is updating"` — **zero results over the last 30 days**, verified directly in Datadog. Reason: the code only attaches these two strings to the JSON response returned to the API caller (`RedeliveryManagerV2.java`); no log statement ever writes them out.
-
-→ To verify the bulk "is updating" case, you must inspect the actual **API response JSON** directly (Postman / client-side request-response log) — it cannot be found via Datadog logs.
+- **Select Solution** (Routing Admin): when a dispatcher/admin approves a whole new batch of routes for a region, the system locks that entire region (keys above) so auto-sprinkle can't jump in and modify routes currently being approved. Unrelated to day-to-day redelivery/sprinkle test cases.
+- **Auto-sprinkle retry loop**: when the route lock can't be acquired, `SprinklingManager` retries a few times (observed: 3 retries, ~150–250ms apart, `warn`-level `retry one off sprinkling for shipment <id> at <region>` logs) before giving up and logging the final error (see §6).
+- **One-off sprinkle data/config/scan flow**: see [One-Off Sprinkle — Data Setup, Config Checks & Scan Flow](../../sprinkling/one-off-sprinkle-guide.md) for how a shipment enters the sprinkle flow in the first place; this doc only covers the locking layer once that flow is triggered.
 
 ---
 
-## 6. Suggested race-condition test cases for QA
+## 6. Known Issues, Gotchas & Ambiguities
 
-1. **Add the same shipment twice, almost simultaneously** (fire two requests back-to-back very quickly) → only one request should succeed; the other must get exactly `"Shipment is being added as redelivery"`, and no duplicate redelivery should be created for the same shipment.
-2. **Bulk redelivery on a batch of 10 shipments, where one is being processed by auto-sprinkle at the same time** → that one shipment must come back as `"Shipment is updating"` in the response, while the rest of the batch still proceeds normally (the whole batch must not be blocked).
-3. **Two different shipments competing for the same route** (e.g. a nearly-full route) → only one shipment gets placed; the other should get `"Assignment is updating"` or get tried against a different route.
-4. After testing (whether it succeeded or was rejected), check that no shipment is left in a **half-finished state** (e.g. redelivery info created but the route wasn't updated, or vice versa) — that's a sign the lock was "forgotten" and never released.
+### Currently open issues
+
+- **Production readiness**: as of 2026-07-22, `data-orchestrator` on the `dev` branch depends on an unreleased SNAPSHOT of `dao` (`1.0.56-ALT-130-lock-SNAPSHOT`, built from `release/ALT-130-lock`). If observed lock behavior doesn't match this doc, confirm the build under test is using the right `dao` version with a developer before concluding it's a bug.
+
+### Gotchas
+
+- **Datadog service tag**: the correct tag is `dataorch`, **not** `data-orchestrator`.
+- **Bulk redelivery messages are invisible in Datadog**: `"Shipment is updating"` and `"Assignment is updating"` exist only in the API response JSON (`RedeliveryManagerV2.java`) — zero results over the last 30 days, verified directly in Datadog. No log statement ever writes them out. To verify these cases, inspect the actual **API response JSON** (Postman / client-side request-response log) directly.
+- **Single-shipment add blocked by the shipment lock**: logged with a real entry (level `error`), service `dataorch`:
+  ```
+  service:dataorch "Cannot obtain lock for redelivery shipment ID <id>"
+  ```
+- **Auto-sprinkle blocked by the route/assignment lock**: logged under service `inbound-api` (not `dataorch`), by `SprinklingManager`/`SortInfoManager`. Thread context is whatever triggers the scan (e.g. `GET /info/<shipmentId>`), since auto-sprinkle runs as a side-effect of that call rather than its own endpoint:
+  ```
+  service:inbound-api "Error while sprinkling shipment ID <shipmentId>"
+  service:inbound-api "com.axlehire.sortation.bizlogic.exception.RetryableException: Failed to lock for assignment <assignmentId>"
+  ```
+  Stack trace confirms the code path: `SprinklingManager.doOneOffSprinkleV2` → `SprinklingManager.oneOffSprinkleV2WithRetry` → `SortInfoManager.lambda$scanInbound$38`.
+
+### Fixed issues (kept for regression coverage)
+
+- None currently.
+
+### Open ambiguities
+
+- None currently.
 
 ---
 
-## 7. References (PR/code)
+## 7. Suggested Race-Condition Test Cases
+
+| # | Test case | Expected result |
+|---|---|---|
+| TC1 | Add the same shipment twice, almost simultaneously (fire two requests back-to-back very quickly) | Only one request succeeds; the other gets exactly `"Shipment is being added as redelivery"`. No duplicate redelivery is created for the same shipment. |
+| TC2 | Bulk redelivery on a batch of 10 shipments, where one is being processed by auto-sprinkle at the same time | That one shipment comes back as `"Shipment is updating"` in the response; the rest of the batch still proceeds normally (the whole batch is not blocked). |
+| TC3 | Two different shipments competing for the same route (e.g. a nearly-full route) | Only one shipment gets placed; the other gets `"Assignment is updating"` or is tried against a different route. |
+| TC4 | After testing (whether it succeeded or was rejected), inspect the shipment/route state | No shipment is left half-finished (e.g. redelivery info created but the route wasn't updated, or vice versa) — that would indicate a lock was "forgotten" and never released. |
+
+---
+
+## 8. References
+
+### Related tickets
+
+- [ALT-1881](https://gojitsu.atlassian.net/browse/ALT-1881) — Implement locking mechanism during automatic shipment sprinkling
+
+### Code / PRs
 
 | Repo | File | Notes |
 |---|---|---|
@@ -110,4 +194,14 @@ The two bulk-redelivery messages — `"Shipment is updating"` and `"Assignment i
 | `sortation-bizlogic` | `SprinklingManager.java` | Auto-sprinkle (`oneOffSprinkleV2`) — shares both the shipment lock and the route lock |
 | `sprinkle-bizlogic` | `SprinklingCacheManager.java`, `SprinklingSolutionSelector.java` | Zone lock for "Select Solution" |
 
-⚠️ **Note on this reaching production**: as of the time this was checked (2026-07-22), `data-orchestrator` on the `dev` branch depends on an unreleased SNAPSHOT of `dao` (`1.0.56-ALT-130-lock-SNAPSHOT`, built from the `release/ALT-130-lock` branch). If lock behavior doesn't match what's described here, it could be because the build under test isn't using the right `dao` version — flag it to a developer to confirm before concluding it's a bug.
+### Related features
+
+- [One-Off Sprinkle — Data Setup, Config Checks & Scan Flow](../../sprinkling/one-off-sprinkle-guide.md)
+
+### Confluence
+
+- None currently.
+
+### Glossary
+
+- None currently.
