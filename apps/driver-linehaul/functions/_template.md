@@ -1,110 +1,143 @@
-# Function: <Function Name>
+---
+# ===== IDENTITY =====
+feature:                                # kebab-case, e.g. address-editing-in-client-portal
+title:                                  # Human-readable, e.g. Address Editing in Client Portal
+domain:                                 # From domain-taxonomy.yaml
+sub_domain:                             # e.g. address-editing
+schema_version: 1.0
 
-<!--
-Documentation template for a Driver Linehaul function.
-Copy this file, rename it to `<function-name>.md`, add a row to the README function
-index, then fill in the sections below.
+# ===== STATE =====
+status: active                          # active | deprecated | archived
+maturity: evolving                      # experimental | evolving | stable
+maintainer:                             # username, e.g. hue.chu
 
-Guidance:
-- Keep only the sections that apply. Delete the ones you don't need
-  (e.g. a UI-facing screen won't need "Configuration reference"; a backend
-  worker won't need "UI elements").
-- Prefer tables and short flow diagrams over long prose.
-- Quote exact user-facing copy (error messages, placeholders) verbatim in `code`.
-- Link the origin ticket and any canonical Confluence spec at the top.
--->
+# ===== SEARCH & DISCOVERY =====
+keywords:                               # 5-15 items, mix category + phrases
+  - 
+  - 
+  - 
 
-> **App:** Linehaul Driver App · **Origin ticket:** [MOB-XXXX](https://gojitsu.atlassian.net/browse/MOB-XXXX)
-> **Confluence:** [<spec title>](<url>) · **Last updated:** <Month YYYY>
+# ===== TAXONOMY =====
+user_types:                             # Who uses this feature
+  - 
+system_touchpoints:                     # Which service/table/component is touched
+  - 
 
-## 1. Description
+# ===== EXTERNAL SOURCES =====
+confluence_refs:                        # Related Confluence pages
+  - id: 
+    title: 
+    url: 
 
-<!-- What this function does, and which actor/population it is for. 3-5 lines max. -->
+figma_refs:                             # Related Figma designs
+  - name: 
+    url: 
+---
 
-Key characteristics:
+# <Feature Title>
 
-- <bullet — the essentials a reader needs before the details>
-- <bullet>
+> **Scope** — <1-2 sentences defining the boundary. Important in-scope / out-of-scope.>
 
 ---
 
-## 2. Business flow
+## 1. Actors & Systems
 
-<!-- Main steps with entry/exit conditions. Use an ASCII flow when branching matters. -->
+- **<Actor / System>** — <role>
+- **`<table name>`** — <purpose>
+  - Key fields: `<field1>`, `<field2>`
 
+---
+
+## 2. Business Rules
+
+### 2.1. <Rule Group>
+
+**Allow when ANY condition is true:**
+
+| # | Condition |
+|---|---|
+| A1 | <condition> |
+
+**Block when ANY condition is true:**
+
+| # | Condition |
+|---|---|
+| B1 | <condition> |
+
+**Core rule**: <1 memorable, easy-to-recall sentence>
+
+### 2.2. Special Cases
+<If any; otherwise: "None currently.">
+
+---
+
+## 3. Workflow
+
+1. <step>
+2. <step>
+3. <step>
+
+---
+
+## 4. Data Model
+<Optional — remove this section if the feature does not touch data>
+
+### Tables
+
+- **`<table>`** — <purpose>
+  - `<field>`: <values or description>
+
+### Reference SQL
+
+```sql
+-- <Purpose>
+SELECT ...
 ```
-<step 1>
-    ↓
-<decision?> → <branch>
-    ↓
-<outcome>
-```
 
 ---
 
-## 3. Spec / Rules
+## 5. Related Behaviors
 
-<!-- Business rules, validation, states. Break into sub-sections as needed. -->
+<How this feature interacts with other features. Ripple effects.>
 
-### Validation / inputs
-- **<field>** — <rule>; on failure → `<exact error copy>`.
-
-### States / eligibility
-<!-- If behavior depends on a state machine, use a matrix. -->
-
-| State | Condition | Result | Notes |
-|---|---|---|---|
-| <state> | <condition> | <result> | <notes> |
+- **<Behavior area>**: <interaction>. See [<feature>](../path/to/file.md).
 
 ---
 
-## 4. UI elements & messages
+## 6. Known Issues, Gotchas & Ambiguities
 
-<!-- OPTIONAL — for screens. Delete for backend-only functions. -->
+### Currently open issues
 
-| Element | Default state / behavior |
-|---|---|
-| `<field/button/link>` | <placeholder / action> |
+- **<Issue>**: <description + impact>
 
-**Message catalog** (quote copy verbatim):
+### Gotchas
 
-| Trigger | Message |
-|---|---|
-| <trigger> | `<exact copy>` |
+- **<Gotcha>**: <description>
 
----
+### Fixed issues (kept for regression coverage)
 
-## 5. Configuration reference
+- **[FIXED — YYYY] <Issue>**: <description>
 
-<!-- OPTIONAL — for backend/worker features driven by config keys. Delete if N/A. -->
+### Open ambiguities
 
-| Key | Type | Storage | Default | Scope | Purpose |
-|---|---|---|---|---|---|
-| `<config.key>` | <type> | Consul | `<default>` | Global | <what it controls> |
-
-> Note any restart requirement (e.g. keys read in `setup()` → restart the worker).
+- **#A1 — <name>**: <question>. Needs confirmation from <PM/Design/Dev>.
 
 ---
 
-## 6. QA / Test notes
+## 7. References
 
-<!-- Happy cases, edge cases, sample data, things to watch when testing. -->
+### Confluence
 
-### Happy path
-- [ ] <case>
+- [<page title>](<url>)
 
-### Edge cases & gotchas
+### Related features
 
-| Scenario | Expected behavior |
-|---|---|
-| <scenario> | <behavior> |
+- [<feature title>](../path/to/file.md)
 
----
+### Glossary
 
-## 7. Discrepancies & open questions
+- [<term>](../../glossary/<term>.md)
 
-<!-- OPTIONAL — surface spec conflicts / TBDs instead of silently resolving them. -->
+### Figma
 
-| # | Item | Detail | Owner |
-|---|---|---|---|
-| 1 | <item> | <what needs confirming> | PO / Backend |
+- [<design name>](<url>)
