@@ -226,3 +226,77 @@ The login screen is **English-only**, even on a non-English device:
 - With device language set to Spanish, all UI text remains English:
   placeholders `Username/Email` / `Password`, button `Login`, links `Login with phone number` / `Forgot password`.
 - Validation errors also stay English: `Email or username required`, `Password Required`.
+
+---
+
+## 16. Test setup — Create a Linehaul driver account manually
+
+The login screen has **no self sign-up** — a driver account must already exist before you can test login.
+For QA, the fastest way to create a real LINEHAUL account on **staging** is to send a message to the
+`linehaul_checker` schedule with a `raw_linehaul_json` payload. This bypasses NetSuite and drives the
+same provisioning path the worker uses in production.
+
+> Deep reference (payload fields, courier logic, config keys):
+> [auto-create-carrier-and-driver.md §6](./auto-create-carrier-and-driver.md#6-how-to-create-test-sync-data-from-netsuite).
+> This section is the QA-focused short version for login testing.
+
+### 16.1 Prerequisites
+
+| Requirement | Why |
+|---|---|
+| `apps.workers.linehaul_checker.driver.linehaul_driver_provisioning_enabled = true` | Master gate — when `false`, no driver is created |
+| `worker-linehaul-checker` **restarted** after the config change | All Consul keys are read once in `setup()` — no hot-reload |
+| A `driverPhone` that does **not** already exist in the DB | Existing phone → skipped (dedup), no new account |
+
+### 16.2 Steps
+
+1. Open the Schedules page: <https://dashboard.staging.gojitsu.com/schedules>
+2. Find the schedule named **`linehaul_checker`**.
+3. Paste a `raw_linehaul_json` payload into the schedule's attributes / payload field, then click **Run**.
+
+```json
+{
+  "raw_linehaul_json": "[{\"shipmentId\":\"276036\",\"netsuiteRecordData\":{\"lastModified\":\"2026-06-15T03:02:00.000Z\",\"name\":\"PO73583\",\"carrierServiceReview\":\"Satisfactory\",\"closed\":false,\"shipStatus\":\"5. In Transit\",\"shipType\":\"Logistics Movement\",\"linehaulType\":\"First Mile\",\"lane\":\"Riverside, CA to Santa Fe Springs, CA\",\"nonRecurring\":false,\"dispatchNotes\":\"Driver must check in at dock 4\",\"jitsuCustomer\":\"68 Nespresso\",\"jitsuPO\":\"Purchase Order #PO73583\",\"trackStatus\":\"On Time\",\"nsLocation\":\"LAX\",\"p44Id\":\"500391969745\",\"p44URL\":\"https://na12.voc.project44.com/portal/v2/tracking-details/tl/500391969745\",\"p44PublicURL\":\"https://na12.voc.project44.com/portal/v2/public/shipment-details/tl/df077c65-90ca-4589-a4db-d399a900659d\",\"trackOnTime\":\"3\",\"totalPkgs\":42,\"totalWeight\":\"1250 lbs\",\"mode\":\"Truckload\",\"trailerId\":\"TRL-88213\",\"seal\":\"SL-009912\"},\"motorFreightCarrierDetails\":{\"tmsCarrier\":{\"name\":\"GERSON'S LLC TRUCKING\",\"carrierMC\":\"MC-123271\",\"carrierDOT\":\"3162299\"},\"cost\":\"400.00\",\"fuel\":\"65.50\",\"detention\":\"0\",\"detentionComment\":\"\",\"eldDeviceId\":\"ELD-7781\",\"driverName\":\"Carlos Mendez\",\"driverPhone\":\"9097143222\",\"equipment\":\"53' Dry Van\",\"reeferTemp\":\"\",\"carrierLoadId\":\"LD-55021\",\"carrierComments\":\"On schedule\",\"carrierNotesInternal\":\"Preferred carrier for LAX lane\"},\"origin\":{\"shipper\":\"Nespresso\",\"shipAddr1\":\"20820 Krameria Ave.\",\"shipAddr2\":\"Suite 100\",\"shipCity\":\"Riverside\",\"shipState\":\"CA\",\"shipZip\":\"92518\"},\"destination\":{\"consignee\":\"LAX\",\"consigneeAddr1\":\"13943 Maryton Ave\",\"consigneeAddr2\":\"Dock B\",\"consigneeCity\":\"Santa Fe Springs\",\"consigneeState\":\"CA\",\"consigneeZip\":\"90670\"}}]"
+}
+```
+
+> ⚠️ **Change `driverPhone`** to a new, unused number for each fresh account (an existing phone is
+> skipped by dedup). If you add `origin.tracking.pickupAppointmentDate`, keep it **within** the
+> provisioning window `[today, today + window_days]` (default `7`) or the load is filtered out.
+
+### 16.3 What gets created
+
+After **Run**, the worker:
+
+1. Reads `raw_linehaul_json` → bypasses the NetSuite API
+2. Creates the courier (`GERSON'S LLC TRUCKING`) if it does not already exist — `type = LINEHAUL`
+3. Creates the driver if `driverPhone` does not exist, with these states:
+
+   | Field | Value |
+   |---|---|
+   | `backgroundStatus` | `MANUALLY_APPROVED` |
+   | `status` | `BACKGROUND_APPROVED` |
+   | Registration phases | `FINISHED` |
+   | DL / Birthday | dummy placeholder |
+
+4. Sends a welcome SMS to `driverPhone` containing a reset-password link
+
+This lands the driver at the **`BACKGROUND_APPROVED + MANUAL_APPROVED`** state — a ✅ login state
+per the [§7 status matrix](#7-account-status--login-destination-matrix).
+
+### 16.4 Set the password & log in
+
+1. Open the welcome SMS on the test device (or trigger **Forgot password** in the app with the same phone).
+2. Follow the reset-password link → set a password.
+3. On the login screen, log in with either:
+   - **Phone number** `(909) 714-3222` + the new password, or
+   - the account's **email/username** + the new password.
+
+### 16.5 Gotchas
+
+| Symptom | Cause |
+|---|---|
+| No account created, nothing in Slack info channel | `driverPhone` blank, or phone already exists (dedup) |
+| Worker ran but no driver | `linehaul_driver_provisioning_enabled = false`, or worker not restarted after config change |
+| Load ignored | `pickupAppointmentDate` outside the `[now, now + window_days]` window |
+| No welcome SMS received | Invalid / landline phone → flagged as operational exception |
