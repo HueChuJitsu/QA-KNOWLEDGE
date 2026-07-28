@@ -14,8 +14,9 @@ own sub-folder under `functions/`.
 |----------|------|--------|
 | Delivery by | [functions/delivery-by/delivery-by.md](functions/delivery-by/delivery-by.md) | Draft |
 | Delivery by — OTD-by-region config | [functions/delivery-by/driver-otd-by-delivery-by.md](functions/delivery-by/driver-otd-by-delivery-by.md) | Draft |
+| Separated Bonus from Route Base Pay | [functions/separated-bonus-from-route-pay.md](functions/separated-bonus-from-route-pay.md) | Draft |
 
-> To add a new function: copy [`functions/_template.md`](functions/_template.md) to
+> To add a new function: copy [`../../_template.md`](../../_template.md) to
 > `functions/<function-name>.md`, then add a row to the table above.
 
 ---
