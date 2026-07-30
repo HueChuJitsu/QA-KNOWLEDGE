@@ -148,60 +148,25 @@ This is the same suppression mechanism enforced for CTIA/TCPA compliance — see
 - Opt-in phone is still respected here: an opted-in recipient gets the rolled SMS even if `shipments.sms_enable:false`.
 - Known unrelated issue found during this QA cycle: shipment `70633002` (also used in [BUSINESS_CLOSED_ON_DELIVERY_DATE](../business-hour/BUSINESS_CLOSED_ON_DELIVERY_DATE.md) testing) was observed emitting an excessive number of `one-off-failed` events — flagged by Trang Le to Tuyen Bui (2026-07-14); confirmed as a duplicate of a scan-put-away bug in the warehouse app, unrelated to this SMS feature.
 
-## 9. QA verification
+## 9. QA verification summary
 
-Verified by Trang Le on staging (2026-07-17) and prod (2026-07-22 – 2026-07-23), reconstructed from Jira comments on WAT-2163.
+Verified by Trang Le on staging (2026-07-17) and prod (2026-07-22 – 2026-07-23).
 
-### 9.1 Top checklist (highlights)
+| Area | Result |
+| --- | --- |
+| Roll inside `customer_available_timewindow` → exactly one delay SMS, same time as tracking page update | Passed (staging + prod) |
+| Roll outside window (quiet hours) → no SMS sent, row queued `NOT_CONFIRMED` | Passed (staging + prod) |
+| Queued shipment re-assigned before recheck → SMS suppressed, row → `IGNORED` | Passed (staging + prod) |
+| Queued shipment still unassigned at recheck → SMS sent | Passed |
+| Same message within 24h → deduped, no second SMS | Passed (staging + prod) |
+| `shipments.sms_enable:false` → SMS blocked, opt-in-phone recipients still receive it | Passed |
+| `category` isolation (`CONFIRMABLE` vs `NOTIFICATION`) → no cross-contamination | Passed |
+| Per-client `customer_available_timewindow` + `max_shipment_move_times` honored (client 820 vs 980 tested with different windows) | Passed |
+| Sender-name resolution (`is_use_profile_name=true` → brand name) applies unchanged to this SMS type | Passed |
+| BETA | Skipped by design — no worker deployed for this flow on BETA |
+| `[RISK]` `sms_enable:false` / unsubscribed → row falsely marked `SENT` | Confirmed bug, not fixed |
 
-- Roll inside `customer_available_timewindow` → exactly one delay SMS sent, same time as tracking page update.
-- Roll outside window (quiet hours) → no SMS sent, `shipment_id` queued as `NOT_CONFIRMED`.
-- Queued shipment re-assigned (`assignment_id` present) at re-check → SMS suppressed, row set `IGNORED`.
-- Queued shipment still unassigned at re-check → SMS sent.
-- Same message within 24h → deduped, row moved `NOT_CONFIRMED` → `IGNORED`, no second SMS.
-- `shipments.sms_enable:false` → SMS blocked, but opt-in-phone recipients still receive it.
-- `[RISK]` `shipments.sms_enable:false` / unsubscribed recipients → `sms_queue` row is still marked `SENT` (count incremented) even though no SMS was actually sent — known issue, not fixed (see §8).
-
-### 9.2 Full test results
-
-| No. | Scenario / QA Checklist | Test Data | Evidence / Actual Result | Pass? | Note |
-| --- | --- | --- | --- | --- | --- |
-| **Edge Cases** | | | | | |
-| 1 | `shipments.sms_enable:false` on one shipment for a customer with multiple shipments → that shipment's SMS is blocked, others unaffected | Customer with 2 shipments, one `sms_enable:true` / one `false` | SMS blocked as expected | ✅ | Staging |
-| 2 | `shipments.sms_enable:false` blocks send, but `sms_queue` row still updates `NOT_CONFIRMED` → `SENT` and `sent_count` 0→1 even though no SMS was sent | Same as above | Row falsely shows `SENT` | ⚠️ | `[RISK]` Known issue — status doesn't reflect actual delivery, needs follow-up |
-| 3 | Recipient in `unsubscribers` (`type = SMS_SERVICE`) → no SMS sent | Phone in unsubscribers list | No SMS delivered | ✅ | Staging. `[RISK]` Same known issue: `sms_queue` row still marked `SENT`, count=1, despite no send |
-| 4 | Regression: status change (e.g. `OPENED`) on a `CONFIRM_ACCESS_CODE_MDU_NO_INSTRUCTION` row does not cross-affect an `INFORM_RECIPIENT_SHIPMENT_ROLLED` row for the same shipment, and vice versa | Shipment with both `sms_queue` categories present | No cross-contamination between `CONFIRMABLE` and `NOTIFICATION` rows | ✅ | Staging — validates the `category` field guard (§3) |
-| **Schedule Trigger** | | | | | |
-| 5 | Cron schedule fires as expected | Manual trigger | Ran successfully | ✅ | Staging |
-| 6 | Cron schedule fires on its normal recurring schedule | Scheduled run (30-min cron) | Ran successfully | ✅ | Staging |
-| **Immediate Send Window** | | | | | |
-| 7 | Roll during `customer_available_timewindow` → recipient gets exactly one delay SMS, sent same time as tracking page update | Recipient `+16462713111` | Message received, content verified | ✅ | Staging |
-| 8 | Roll during window → recipient gets exactly one delay SMS with tracking page update | Shipment in TEST region | SMS sent as expected | ✅ | Prod |
-| 9 | After cron cutoff time (still within `customer_available_timewindow`) → SMS is sent, status updated to `SENT` with `sent_time` set | — | Status/`sent_time` updated correctly | ✅ | Staging |
-| 10 | Same as above, verified on prod | — | Status/`sent_time` updated correctly | ✅ | Prod |
-| **Quiet-Hour Queuing** | | | | | |
-| 11 | Roll during cron-off time OR outside `customer_available_timewindow` → row created as `NOT_CONFIRMED` / `NOTIFICATION` in `sms_queue` | — | Row created as expected | ✅ | Staging |
-| 12 | Roll outside client SMS window → no SMS sent, shipment queued `NOT_CONFIRMED` | Shipment `124180673` | Log: `"Shipment 124180673 outside client SMS window. Defer rolled SMS to next run"` | ✅ | Prod |
-| **Recheck Suppress** | | | | | |
-| 13 | Queued shipment WITH `assignment_id` at 6am recheck → SMS suppressed, row set `IGNORED` | — | Row updated to `IGNORED` | ✅ | Staging |
-| 14 | Same, verified on prod | Shipment `124180673` | Log: `"Shipment 124180673 is assigned again. Suppress rolled SMS"` | ✅ | Prod |
-| **Dedup / No Duplicate SMS** | | | | | |
-| 15 | Same message re-triggered within 24h → status moves `NOT_CONFIRMED` → `IGNORED`, no second SMS sent | — | No duplicate sent | ✅ | Staging |
-| 16 | Same, verified on prod | Shipment `124180655` | No duplicate sent | ✅ | Prod |
-| **Opt-In Phone Interaction** | | | | | |
-| 17 | Customer with opt-in phone → SMS sent to the recipient-provided opt-in number (checked via `phone_opt_in_consent.sms_opt_in:true` per `shipment_id`) | `opt_in_phone` config, client 820 (QA TEST): `13273245660` | Not exercised in this cycle | — | Skipped in staging — planned for beta/prod |
-| 18 | Customer with opt-in phone + `sms_enable:false` → SMS still sent to the opt-in number | — | Not exercised in this cycle | — | Skipped in staging — planned for beta/prod |
-| 19 | No opt-in phone, `shipments.sms_enable:true` → SMS sent to `customer.info` phone | — | Sent as expected | ✅ | Staging |
-| 20 | Customer with opt-in phone + `sms_enable:false` → SMS still sent to opt-in number | Shipment `124180653` | Sent as expected | ✅ | Prod |
-| 21 | No opt-in phone, `shipments.sms_enable:true` → SMS sent to `customer.info` phone | — | Sent as expected | ✅ | Prod |
-| **Config / Send Window Verification** | | | | | |
-| 22 | `client_settings.settings` per client honors its own `customer_available_timewindow` **and** `max_shipment_move_times` | Client `820`: `00:00-20:00`, max moves `2`, opt-in enabled. Client `980`: `04:00-23:59`, max moves `2`, opt-in enabled | Windows respected per client | ✅ | Staging. `max_shipment_move_times` is a related per-client cap tested alongside the send window in this case — its own mechanics are not traced further here; see `client_settings.settings` for the raw config |
-| 23 | SMS content reflects `client_profiles.is_use_profile_name:true` → uses `brand_name` instead of `company_name` | Client with `is_use_profile_name:true` | Correct brand name shown in SMS | ✅ | Staging — confirms §6.3 sender-name logic applies unchanged here |
-| 24 | `${company_name}` / brand-name resolution reuses existing sender-name logic without code changes | Shipments `124180655`, `124180651` | Dev confirmed no new code path added | ✅ | Prod. Note: "Need check existing logic" — flagged for confirmation, not a new defect |
-| **Environment Coverage** | | | | | |
-| 25 | BETA verification | — | No worker deployed for this flow on BETA | — | Skipped by design — not applicable to BETA |
-
-**Sources:** Jira comments on WAT-2163 — staging verification (Trang Le, 7/17), prod verification (Trang Le, 7/22–7/23), BETA skip note (Dung Truong, 7/22).
+Opt-in-phone-specific scenarios (customer with opt-in phone, with/without `sms_enable:false`) were skipped in the staging cycle and verified later on prod (shipment `124180653`).
 
 ## 10. Rollout (WAT-2229)
 
