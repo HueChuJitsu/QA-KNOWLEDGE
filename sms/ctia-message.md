@@ -117,3 +117,60 @@ The `unsubscribers` collection uses a `type` field (`PreferenceType` enum) to sc
 | `false` | User-initiated unsubscribe (texted STOP, or opt-out) | Not auto-removed — requires START / opt-in to clear |
 
 > SMS opt-in (IMPL-194) STOP records are always `ineligible: false`.
+
+## 7. Send-time gate — exact implementation
+
+Sections 5–6 describe the `unsubscribers` model conceptually. This section documents **where and how** the gate is actually enforced at send time, code-traced in `worker`.
+
+### 7.1 Model — `CommunicationUnsubscriber` (collection `unsubscribers`)
+
+| Field | Meaning |
+|---|---|
+| `type` | `SMS` (full opt-out) / `SMS_SERVICE` / `SMS_MARKETING` / `email` / `phone_call` |
+| `contact` | Phone number (or email) — **already formatted** as stored |
+| `unsubscribe_ts` | Timestamp of unsubscribe |
+| `ineligible` | See §6 — **not read** by the send-time gate itself, descriptive only |
+
+### 7.2 Gate — `TwilioSMSProviderWorker` (lines 181–197)
+
+```java
+List<String> sendable = message.recipients;
+if (message.isForceSent) {                    // isForceSent = true -> bypasses unsubscribe check entirely
+    ...
+} else {
+    List<String> unsubscribed = message.recipients.parallelStream()
+        .filter(r -> hasUnsubscribed(formatPhoneNumber(r), message.isPromotional))
+        .collect(...);
+    sendable = recipients minus unsubscribed;
+}
+if (sendable.isEmpty()) return;               // nobody left -> quit, no send
+```
+
+- Phone numbers are formatted (`CommunicationViaSMSWorker.formatPhoneNumber`) **before** being matched against `contact`.
+- `message.isForceSent == true` skips the unsubscribe check completely — used for messages that must always go out regardless of opt-out state.
+
+### 7.3 Core logic — `hasUnsubscribed(phone, isPromotional)` (lines 553–583)
+
+```java
+// 1. Query unsubscribers by contact=phone, type in {SMS, SMS_SERVICE, SMS_MARKETING}
+rows = communicationUnsubscriberDAO.listByContactsAndTypes([phone], [SMS, SMS_SERVICE, SMS_MARKETING]);
+// 2. Promotional SMS + a SMS_MARKETING row -> block
+if (isPromotional == true  && rows.anyMatch(type == SMS_MARKETING)) return true;
+// 3. Service/notification SMS + a SMS_SERVICE row -> block
+if (isPromotional != true  && rows.anyMatch(type == SMS_SERVICE))   return true;
+// 4. A SMS row (recipient texted STOP) -> block ALL SMS
+if (rows.anyMatch(type == SMS)) return true;
+return false;   // not unsubscribed -> send allowed
+```
+
+This is the same three-tier logic as §5, now traced to its exact query and gate function.
+
+### 7.4 Known risks
+
+- `[RISK]` **Phone-format mismatch.** If the number's stored format in `unsubscribers.contact` differs from what `formatPhoneNumber()` produces at send time, the match **fails open** — i.e. the recipient is **not** suppressed even though they opted out. Worth a data-quality check when debugging a "why did an unsubscribed recipient still get texted" report.
+- `[RISK]` **False `SENT` status on suppression.** The unsubscribe gate runs *after* an `sms_queue` row has already been created/queued (for queue-pipeline SMS types) — suppressing here blocks the actual message, but does not prevent the row from being marked as if it sent. Confirmed as a known issue on the rolled-shipment flow specifically — see [Shipment Rolled Notification §8](shipment-rolled-notification.md#8-known-issues--risks) — the same risk applies to any SMS type routed through `sms_queue` whose send is blocked at this gate, not just that one flow.
+- `message.isForceSent` bypass is a deliberate escape hatch, not a bug — but worth checking which SMS types set it when investigating an unexpected send to an unsubscribed recipient.
+
+### 7.5 Net effect
+
+`unsubscribers` suppression is a **last-line check inside the send worker**, after any `sms_queue` row has already been created/queued. It does not prevent the row from existing — only the actual message from going out.

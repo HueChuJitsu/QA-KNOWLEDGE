@@ -140,7 +140,7 @@ Key points:
 | `SMS_SERVICE` | **Yes** |
 | `SMS` (texted STOP) | **Yes** — blocks all SMS |
 
-This is the same suppression mechanism enforced for CTIA/TCPA compliance in the opt-in phone feature — see [Individual SMS opt-in](../webapp/recipient/functions/individual-sms-opt-in-tracking-page.md) for the full gate logic, `isForceSent` bypass, and phone-format-mismatch caveat. It is not re-documented here; only the interaction is noted.
+This is the same suppression mechanism enforced for CTIA/TCPA compliance — see [CTIA message §7](ctia-message.md#7-send-time-gate--exact-implementation) for the full gate logic, `isForceSent` bypass, and phone-format-mismatch caveat. It is not re-documented here; only the interaction is noted.
 
 ## 8. Known issues / risks
 
