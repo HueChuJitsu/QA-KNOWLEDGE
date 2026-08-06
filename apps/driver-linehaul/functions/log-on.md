@@ -260,9 +260,17 @@ same provisioning path the worker uses in production.
 }
 ```
 
-> ⚠️ **Change `driverPhone`** to a new, unused number for each fresh account (an existing phone is
-> skipped by dedup). If you add `origin.tracking.pickupAppointmentDate`, keep it **within** the
-> provisioning window `[today, today + window_days]` (default `7`) or the load is filtered out.
+> ⚠️ **Change `driverPhone`** to a new, unused number for each fresh account — the phone is the
+> **only** driver de-dup key (`getDriverByPhone`); an existing phone is skipped, no new account.
+>
+> ⚠️ **Also change `shipmentId`** for a clean setup. It is *not* a driver de-dup key, so reusing it
+> still creates the driver — but the linehaul/trip record is looked up by `shipmentId`
+> (`getByLinehaulId(Long.parseLong(shipmentId))`): a reused `shipmentId` **updates the existing
+> linehaul instead of creating a new trip** (*same `shipmentId` → same `trip_id` forever*). Use a new,
+> **numeric** value to get a fresh trip alongside the driver.
+>
+> If you add `origin.tracking.pickupAppointmentDate`, keep it **within** the provisioning window
+> `[today, today + window_days]` (default `7`) or the load is filtered out.
 
 ### 16.3 What gets created
 
@@ -297,6 +305,8 @@ per the [§7 status matrix](#7-account-status--login-destination-matrix).
 | Symptom | Cause |
 |---|---|
 | No account created, nothing in Slack info channel | `driverPhone` blank, or phone already exists (dedup) |
+| Driver created but no new trip/linehaul appears | Reused an existing `shipmentId` → the linehaul record was updated, not created (same `shipmentId` → same `trip_id`) |
+| Run fails to parse the payload | `shipmentId` not numeric — it is read via `Long.parseLong(shipmentId)` |
 | Worker ran but no driver | `linehaul_driver_provisioning_enabled = false`, or worker not restarted after config change |
 | Load ignored | `pickupAppointmentDate` outside the `[now, now + window_days]` window |
 | No welcome SMS received | Invalid / landline phone → flagged as operational exception |
