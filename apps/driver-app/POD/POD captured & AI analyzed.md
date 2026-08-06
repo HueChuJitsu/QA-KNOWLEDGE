@@ -26,6 +26,7 @@
   - [Feature Flags](#feature-flags)
   - [Camera & Image Quality](#camera--image-quality)
   - [Masking (Privacy Blurring)](#masking-privacy-blurring)
+  - [Package Label Masking](#package-label-masking)
   - [Validation & AI Rules](#validation--ai-rules)
   - [Enforcement Policy (per assignment/stop)](#enforcement-policy-per-assignmentstop)
   - [Upload & Storage](#upload--storage)
@@ -429,6 +430,38 @@ How it works:
 | `pod_mask_color` | `#B4AAA0` | Hex colour used for the mask overlay. |
 | `mask_threshold` | `0.2` | Confidence threshold for the mask detection model (0.0–1.0). |
 | `send_original_image_enabled` | `true` | When `true`, both the original and masked images are uploaded. |
+
+### Package Label Masking 
+
+Applies package label masking **before** the OCR detection step in the on-device AI detection model — separate from the privacy masking above, this masks/obscures the package **label** region specifically so that OCR only sees the masked image. Gated by a global flag so it can be enabled/disabled without an app release.
+
+
+| Config Key | Location | Default | Description |
+|---|---|---|---|
+| `enable_package_masking` | Consul `mobile_app_config` | `true` | Can be overridden per region, warehouse, driver via the `item_metadata` collection|
+
+
+**Behaviour:**
+
+- **Enabled (`true`, default):** masking is applied to the image/frame before OCR detection, consistently on Android and iOS (masking → OCR detection → downstream model/threshold handling). OCR results with `detection_confidence` (in `ocr_rec.result`) > 0.7 are recorded in the `photo_analyzed` event. If the model returns an empty string, the condition is marked failed.
+- **Disabled (`false`):** the masking step is skipped entirely — the raw image/frame goes directly into OCR detection. All downstream behaviour (thresholds, rule analysis, enforcement, upload) is unchanged.
+- The flag only gates the masking step — photo capture, validation flow, and stop completion are never blocked by its value.
+- If the flag hasn't been set up, the default value is false. The masking package label will turn off in default. 
+  bool get enablePackageMasking {
+    return getBool("enable_package_masking", defaultValue: false);
+  }
+- Set up the flag at Region, Warehouse, Driver level: using endpoint `/metadata/{{RG/WH/DR_id}}/APP_CONFIG/enable_package_masking`
+  ```json
+  {
+      "type": "java.lang.Boolean",
+      "value": "true"
+  }
+  ```
+**QA Notes:**
+
+1. Change the value in Consul or item_metadata.
+2. Wait ~1–2 minutes (up to ~5 if you added a brand-new key rather than editing an existing one) for the API's caches to expire.
+3. Kill and relaunch the app → it fetches /config at launch and gets the new values.
 
 ### Validation & AI Rules
 
